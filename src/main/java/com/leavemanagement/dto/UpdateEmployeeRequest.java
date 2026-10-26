@@ -9,6 +9,7 @@ import jakarta.validation.constraints.Positive;
 /**
  * HR update of an employee; null fields are left unchanged.
  * Set clearReportingLead to true to remove the reporting lead.
+ * headApproverId (the Lab Head) applies to HR staff only, who must always have one.
  */
 public record UpdateEmployeeRequest(
         String firstName,
@@ -21,5 +22,6 @@ public record UpdateEmployeeRequest(
         EmployeeStatus status,
         Integer reporting_LeadId,
         Boolean clearReportingLead,
-        Role role) {
+        Role role,
+        Integer headApproverId) {
 }

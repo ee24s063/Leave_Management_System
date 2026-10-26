@@ -6,5 +6,6 @@ package com.leavemanagement.entity;
 public enum Role {
     EMPLOYEE,
     TEAM_LEAD,
-    HR_ADMIN
+    HR_ADMIN,
+    LAB_HEAD   // approves HR staff's leave; the name shown to users is set by app.role-names.lab-head
 }

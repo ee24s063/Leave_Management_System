@@ -69,7 +69,8 @@ public class CompOffController {
     }
 
     /**
-     * Team Lead queue: reports' comp-off requests waiting for the lead (HR: all of them)
+     * Team Lead / Lab Head queue: reports' comp-off requests waiting for the lead, then the HR staff requests
+     * this user may approve as their Lab Head or chosen Team Lead (HR: all requests waiting for a lead)
      */
     @GetMapping("/pending/team")
     public List<CompOffRequestView> teamQueue() {
@@ -78,8 +79,15 @@ public class CompOffController {
         if (me.hasRole(Role.HR_ADMIN)) {
             return compOffService.toViews(compOffService.getByStatus(waitingForLead));
         }
-        List<Integer> team = me.getEmployeeId() == null ? List.of() : employeeRepository.findTeamMemberIds(me.getEmployeeId());
-        return compOffService.toViews(compOffService.getByStatusForEmployees(waitingForLead, team));
+        if (me.getEmployeeId() == null) {
+            return List.of();
+        }
+        List<Integer> team = employeeRepository.findTeamMemberIds(me.getEmployeeId());
+        List<Integer> hrStaff = new ArrayList<>(team);
+        hrStaff.addAll(employeeRepository.findIdsByHeadApproverId(me.getEmployeeId()));
+        List<CompOffRequest> queue = new ArrayList<>(compOffService.getByStatusForEmployees(waitingForLead, team));
+        queue.addAll(compOffService.getByStatusForEmployees(EnumSet.of(LeaveStatus.PENDING_HEAD), hrStaff));
+        return compOffService.toViews(queue);
     }
 
     /**
@@ -128,6 +136,9 @@ public class CompOffController {
             ids.add(me.getEmployeeId());
             if (me.hasRole(Role.TEAM_LEAD)) {
                 ids.addAll(employeeRepository.findTeamMemberIds(me.getEmployeeId()));
+            }
+            if (me.hasRole(Role.LAB_HEAD)) {
+                ids.addAll(employeeRepository.findIdsByHeadApproverId(me.getEmployeeId()));
             }
         }
         return ids;

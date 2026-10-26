@@ -1,6 +1,6 @@
 # Leave Management System
 
-A Spring Boot web application for managing employees, leave balances and leave requests, with role-based login for Employees, Team Leads and HR.
+A Spring Boot web application for managing employees, leave balances and leave requests, with role-based login for Employees, Team Leads, HR and the Lab Head.
 
 > **Status:** under active development, following a phased implementation plan.
 >
@@ -22,11 +22,12 @@ A Spring Boot web application for managing employees, leave balances and leave r
 - Every page and API call requires login. Users sign in with their **email** and password.
 - **Login uses JWT** (no server session). The login form puts a signed token in an HttpOnly cookie (`LMS_TOKEN`, valid 8 hours); API clients such as a future mobile app call `POST /api/auth/login` and send the token as `Authorization: Bearer <token>`.
 - **Logout** cancels all of the user's tokens, in every browser and device. Changing the password, or an HR password reset, does the same.
-- Three roles:
+- Four roles:
   - **Employee:** view and update their own profile (phone), view their own leave balance, balance history and leave history, apply for leave, and request comp-off.
   - **Team Lead:** everything an Employee can do, plus view their team's requests and balances, and give the **first approval** (or rejection) on their team's leave requests.
   - **HR / Admin:** manage employees, roles and reporting leads, leave types and balances (including adjustments); view all requests and give the **final approval**.
-- Nobody can approve or reject their own leave request.
+  - **Lab Head** (role code `LAB_HEAD`): everything an Employee can do, plus approve or reject the leave and comp-off of the **HR staff** they are assigned to, and see those staff members' requests and balances. The name shown to users is a setting (`app.role-names.lab-head`, or the environment variable `LMS_LAB_HEAD_NAME`), so the role can be renamed without changing code.
+- Nobody can approve or reject their own leave request, and HR users cannot approve or reject an HR colleague's request.
 - New accounts get a **temporary password** that must be changed at first login.
 - HR can reset a user's password. Deactivating an employee (or setting them to Resigned or Relieved) disables their login.
 - HR's changes apply immediately, even to users who are already logged in: every request re-reads the account, so a disabled user is logged out on their next click, and a changed role takes effect on the next request.
@@ -34,6 +35,7 @@ A Spring Boot web application for managing employees, leave balances and leave r
 ### Employee management (HR)
 - Create employees with name, email, phone, department/team, designation, salary, joining date, **role** and **reporting lead** (`reporting_LeadId`).
 - The reporting lead must be an active employee with the Team Lead or HR role.
+- **HR staff** have two approvers instead: a **Lab Head** (required) and, optionally, a **Team Lead**. The Lab Head field (`headApproverId`) appears on the form when the role is HR. The second approver must be a Team Lead, not another HR user.
 - Edit details, change status (Active, Inactive, Resigned, Relieved), change role or reporting lead.
 - Search by name; optionally include inactive employees.
 
@@ -47,11 +49,13 @@ A Spring Boot web application for managing employees, leave balances and leave r
   | --- | --- | --- |
   | Waiting for Team Lead (`PENDING_TL`) | Submitted | The employee's reporting lead (or HR, see below) |
   | Waiting for HR (`PENDING_HR`) | Lead approved, or the lead step was skipped | HR |
+  | Waiting for Lab Head / Team Lead (`PENDING_HEAD`) | Submitted by an HR employee | Their Lab Head or their chosen Team Lead (either one; final) |
   | Approved (`APPROVED`) | HR approved; days deducted | - |
   | Rejected (`REJECTED`) | Rejected by the lead or HR; no days deducted | - |
   | Cancelled (`CANCELLED`) | Withdrawn; deducted days restored | - |
 
-  - A request goes **straight to HR** when the employee has no reporting lead, or is a Team Lead or HR themselves.
+  - A request goes **straight to HR** when the employee has no reporting lead, or is a Team Lead or Lab Head themselves.
+  - **HR staff's requests** (leave and comp-off) go to their Lab Head **and** their chosen Team Lead with the status "Waiting for Lab Head / Team Lead" (`PENDING_HEAD`). Whichever of the two approves first gives the **final** approval (days deducted, or comp-off credited); either one can reject. Other HR users cannot act on it. An HR employee with neither approver set cannot apply until HR sets their Lab Head.
   - **Lead away:** HR can approve a request that is still waiting for the Team Lead. One HR approval then completes both steps, and the history records it as "approved by HR on behalf of the Team Lead". No delegate lead is needed.
   - A rejection at either step ends the request and needs a reason.
   - The Team Lead cannot give the final approval; HR cannot be skipped.
@@ -97,10 +101,10 @@ Every export is an `.xlsx` file with a bold, frozen header row, filters on each 
 | --- | --- |
 | Home, My Profile, Leave Balance (with balance history) | Everyone |
 | Comp-off: request, own balance, My Requests / All tabs | Everyone |
-| Comp-off: Team Approvals / HR Approvals tabs | Team Lead / HR |
+| Comp-off: Team Approvals / HR Approvals tabs | Team Lead and Lab Head / HR |
 | Leave Balance: create balance, adjust balance, leave types | HR |
 | Leave Requests: My Requests and All tabs | Everyone |
-| Leave Requests: Team Approvals tab (with pending count) | Team Lead |
+| Leave Requests: Team Approvals tab (with pending count) | Team Lead, Lab Head |
 | Leave Requests: HR Approvals tab (with pending count) | HR |
 | Dashboard: organisation view | HR |
 | Dashboard: My team view | Team Lead |
@@ -147,6 +151,7 @@ The app runs at **http://localhost:8080/lms/**.
 | `LMS_JWT_SECRET` | random at each start | Key that signs tokens; 32+ characters. Without it, everyone must log in again after a restart (fine for a local demo) |
 | `LMS_JWT_EXPIRATION_MINUTES` | 480 (8 hours) | How long a login lasts |
 | `LMS_COOKIE_SECURE` | false | Set to `true` when the app is served over HTTPS |
+| `LMS_LAB_HEAD_NAME` | Lab Head | The name shown for the `LAB_HEAD` role on pages, messages and Excel exports |
 3. On **Leave Balance**, add the leave types you use (for example Sick Leave, Casual Leave).
 4. On **Employees**, create your **Team Leads first**, then the employees who report to them. Each creation shows the new user's temporary password once; hand it to them.
 5. On **Leave Balance**, create each employee's balance for the year.
@@ -156,7 +161,7 @@ The admin account is not an employee, so it cannot apply for leave. Create a sep
 ### Database
 - The database file is `leavemanagement.db` in the folder the app is started from.
 - The schema is created and upgraded by **Flyway** from `src/main/resources/db/migration`. Hibernate does not change the schema (`ddl-auto=none`).
-- Upgrading is automatic. For example, a Phase 1 database gets migration V2 at the next start: pending requests become "Waiting for Team Lead", and earlier approve/reject decisions are moved into the approval history. V3 adds the built-in Compensatory Leave type and writes opening ledger entries for existing balances (allotted days and days already used). V4 adds the token version used to cancel login tokens.
+- Upgrading is automatic. For example, a Phase 1 database gets migration V2 at the next start: pending requests become "Waiting for Team Lead", and earlier approve/reject decisions are moved into the approval history. V3 adds the built-in Compensatory Leave type and writes opening ledger entries for existing balances (allotted days and days already used). V4 adds the token version used to cancel login tokens. V5 adds the Lab Head approver (`head_approver_id`) to employees and moves HR staff's pending requests to "Waiting for Lab Head / Team Lead"; HR then sets a Lab Head on each HR employee so those requests reach an approver.
 - A `leavemanagement.db` left over from versions before Flyway will not start. Move or delete it, and a new one is created.
 
 ## REST API
@@ -189,7 +194,7 @@ curl -H "Authorization: Bearer $TOKEN" http://localhost:8080/lms/api/reports/sum
 | GET | `/employees?includeInactive=false` | Team Lead (own team), HR (all) | List employees |
 | GET | `/employees/{id}` | Self, own lead, HR | Employee details (salary shown to HR only) |
 | POST | `/employees` | HR | Create employee + login; returns `temporaryPassword` |
-| PUT | `/employees/{id}` | HR | Update fields, `status`, `role`, `reporting_LeadId` (or `clearReportingLead: true`) |
+| PUT | `/employees/{id}` | HR | Update fields, `status`, `role`, `reporting_LeadId` (or `clearReportingLead: true`), `headApproverId` (HR staff only) |
 | POST | `/employees/{id}/reset-password` | HR | New temporary password |
 | DELETE | `/employees/{id}` | HR | Deactivate and disable login |
 | GET | `/employees/search?name=` | HR | Search by name |
@@ -203,6 +208,7 @@ POST /lms/api/employees
   "role": "EMPLOYEE", "reporting_LeadId": 1
 }
 ```
+For an HR employee, send `"role": "HR_ADMIN"` and `"headApproverId"` (the employee ID of a Lab Head); `reporting_LeadId` is then the optional Team Lead.
 
 ### Leave requests
 | Method | Path | Who | Description |
@@ -212,7 +218,7 @@ POST /lms/api/employees
 | GET | `/leave-requests/{id}` | Requester, their lead, HR | Request details |
 | GET | `/leave-requests/employee/{employeeId}` | Self, own lead, HR | An employee's history |
 | GET | `/leave-requests/status/pending` | Everyone (filtered) | Requests pending at either step |
-| GET | `/leave-requests/pending/team` | Team Lead, HR | Requests waiting for Team Lead approval (a lead sees only their reports) |
+| GET | `/leave-requests/pending/team` | Team Lead, Lab Head, HR | Requests waiting for Team Lead approval (a lead sees only their reports), then HR staff's requests this user may approve as their Lab Head or Team Lead |
 | GET | `/leave-requests/pending/hr` | HR | Requests waiting for HR, then requests still waiting for a lead |
 | GET | `/leave-requests/{id}/history` | Requester, their lead, HR | Approval history (step, action, approver, comments, time) |
 | POST | `/leave-requests/{id}/approve` | Team Lead (own team), HR | Approve at the current step. `{"comments": "..."}` (optional) |
@@ -228,7 +234,7 @@ The server works out the approval step from the request's status and the caller'
 | POST | `/comp-off` | Everyone with an employee record | Request: `{"workedFrom", "workedTo", "reason"}` |
 | GET | `/comp-off` | Everyone (filtered) | Own requests; Team Lead also their team's; HR all |
 | GET | `/comp-off/{id}`, `/comp-off/employee/{employeeId}` | Requester, their lead, HR | Details / an employee's requests |
-| GET | `/comp-off/pending/team` | Team Lead, HR | Waiting for Team Lead approval |
+| GET | `/comp-off/pending/team` | Team Lead, Lab Head, HR | Waiting for Team Lead approval, then HR staff's requests this user may approve |
 | GET | `/comp-off/pending/hr` | HR | Waiting for HR, then waiting for a lead |
 | POST | `/comp-off/{id}/approve`, `/comp-off/{id}/reject` | Team Lead (own team), HR | Same rules as leave; HR's final approval credits the days |
 | POST | `/comp-off/{id}/cancel` | Requester, HR | Withdraw a pending request |
@@ -256,7 +262,7 @@ All take an optional `year` (defaults to the current year). The comp-off balance
 | GET | `/reports/team?year=` | Team Lead | `teamSize`, `waitingForMe`, `waitingForHr` and the team's balance rows |
 | GET | `/reports/leave-balance/export?year=&department=&leaveTypeId=` | HR | Excel: leave balance report with totals |
 | GET | `/reports/negative-balances/export?year=` | HR | Excel: negative balances, most negative first |
-| GET | `/reports/leave-requests/export?from=&to=&status=` | HR | Excel: leave requests with both approval steps. `from`/`to` are `YYYY-MM-DD` (default: the current year); `status` is optional (`PENDING_TL`, `PENDING_HR`, `APPROVED`, `REJECTED`, `CANCELLED`) |
+| GET | `/reports/leave-requests/export?from=&to=&status=` | HR | Excel: leave requests with both approval steps. `from`/`to` are `YYYY-MM-DD` (default: the current year); `status` is optional (`PENDING_TL`, `PENDING_HR`, `PENDING_HEAD`, `APPROVED`, `REJECTED`, `CANCELLED`) |
 | GET | `/reports/transactions/export?employeeId=&year=` | HR | Excel: one employee's balance history |
 | GET | `/reports/employees/export` | HR | Excel: employee list |
 
@@ -277,7 +283,7 @@ src/main/java/com/leavemanagement/
 ├── service/       Business logic
 └── util/          Date, validation and password helpers
 src/main/resources/
-├── db/migration/  Flyway SQL migrations (V1 initial schema, V2 two-level approval, V3 comp-off/adjustments/ledger)
+├── db/migration/  Flyway SQL migrations (V1 initial schema, V2 two-level approval, V3 comp-off/adjustments/ledger, V4 token version, V5 Lab Head approval)
 ├── templates/     Thymeleaf pages (+ fragments/layout.html: shared head, navbar, footer)
 └── static/        CSS and JavaScript (main.js is shared by all pages)
 src/test/java/     Spring Boot + MockMvc tests: access rules, approval workflow, balances and comp-off, reports, Excel exports
@@ -285,7 +291,7 @@ src/test/java/     Spring Boot + MockMvc tests: access rules, approval workflow,
 
 ## Testing
 ```bash
-mvn test                          # all 245 tests, about a minute
+mvn test                          # all 272 tests, about a minute
 mvn test -DexcludedGroups=ui      # without the browser tests
 mvn test -Dtest=UiTests           # only the browser tests
 ```
@@ -293,13 +299,13 @@ Three levels:
 
 | Level | Where | Tests |
 | --- | --- | --- |
-| Unit: one module at a time, no database (JUnit 5, Mockito) | `src/test/java/com/leavemanagement/{util,entity,security,service}` | 141 |
-| Integration: whole app through the REST API with a real database | `src/test/java/com/leavemanagement/*Tests.java` | 91 |
+| Unit: one module at a time, no database (JUnit 5, Mockito) | `src/test/java/com/leavemanagement/{util,entity,security,service}` | 155 |
+| Integration: whole app through the REST API with a real database | `src/test/java/com/leavemanagement/*Tests.java` | 104 |
 | UI: a real headless browser clicking through the pages as each role (Selenium) | `src/test/java/com/leavemanagement/ui/UiTests.java` | 13 |
 
 The UI tests use Microsoft Edge, or Google Chrome when Edge's driver cannot be downloaded; with neither available they are skipped. They save a screenshot per scenario to `target/ui-screenshots`.
 
-Integration tests use a temporary SQLite file under `target/` and cover login (form and API, token cookie, Bearer tokens, altered tokens, logout and password changes cancelling tokens), CSRF, the forced password change, each access rule (own data, own team, HR-only actions), the two-level approval workflow (routing, HR approving for an absent lead, rejections, cancelling, queues, history), half-day leave, negative balances, comp-off, HR adjustments, the ledger adding up to the balance, the dashboard reports (totals, filters, comp-off vs adjustments, negative-balance dates, Team Lead scope), the Excel exports (each file is opened and its rows checked; HR only; download with the login cookie), and that every page renders for each role.
+Integration tests use a temporary SQLite file under `target/` and cover login (form and API, token cookie, Bearer tokens, altered tokens, logout and password changes cancelling tokens), CSRF, the forced password change, each access rule (own data, own team, HR-only actions), the two-level approval workflow (routing, HR approving for an absent lead, rejections, cancelling, queues, history), Lab Head approval of HR staff (either approver is final, other HR users refused, creating HR staff, the renamed role), half-day leave, negative balances, comp-off, HR adjustments, the ledger adding up to the balance, the dashboard reports (totals, filters, comp-off vs adjustments, negative-balance dates, Team Lead scope), the Excel exports (each file is opened and its rows checked; HR only; download with the login cookie), and that every page renders for each role.
 
 ## Known limitations
 - An approved comp-off credit cannot be cancelled directly; HR corrects it with a negative balance adjustment.

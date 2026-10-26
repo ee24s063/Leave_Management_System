@@ -36,7 +36,7 @@
                     <a class="text-decoration-none" th:href="@{/leave-requests}">
                         <div class="card bg-warning h-100">
                             <div class="card-body text-dark">
-                                <h6 class="card-title">Waiting for Team Lead</h6>
+                                <h6 class="card-title" th:text="|Waiting for Team Lead / ${roleNames['LAB_HEAD']}|">Waiting for Team Lead</h6>
                                 <p class="card-text display-5 mb-0" id="pendingTeamLead">-</p>
                                 <small id="pendingTeamLeadDetail"></small>
                             </div>
@@ -147,6 +147,7 @@
                                 <option value="">All statuses</option>
                                 <option value="PENDING_TL">Waiting for Team Lead</option>
                                 <option value="PENDING_HR">Waiting for HR</option>
+                                <option value="PENDING_HEAD" th:text="|Waiting for ${roleNames['LAB_HEAD']} / Team Lead|">Waiting for Lab Head / Team Lead</option>
                                 <option value="APPROVED">Approved</option>
                                 <option value="REJECTED">Rejected</option>
                                 <option value="CANCELLED">Cancelled</option>

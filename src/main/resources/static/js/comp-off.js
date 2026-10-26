@@ -1,4 +1,5 @@
 // Comp-off JavaScript: request days back for work on weekends/holidays; Team Lead then HR approve
+// (HR staff's requests: their Lab Head or chosen Team Lead, either one's approval is final)
 
 const COMP_VIEWS = {
     mine: null,
@@ -24,10 +25,10 @@ document.addEventListener('DOMContentLoaded', async function() {
         document.getElementById('compOffForm').addEventListener('submit', submitCompOff);
         loadMyBalance();
     }
-    document.getElementById('tab-team').hidden = me.role !== 'TEAM_LEAD';
+    document.getElementById('tab-team').hidden = !hasTeamQueue(me.role);
     document.getElementById('tab-hr').hidden = me.role !== 'HR_ADMIN';
 
-    const start = me.role === 'HR_ADMIN' ? 'hr' : me.role === 'TEAM_LEAD' ? 'team' : 'mine';
+    const start = me.role === 'HR_ADMIN' ? 'hr' : hasTeamQueue(me.role) ? 'team' : 'mine';
     showView(me.employee || start !== 'mine' ? start : 'all');
     refreshCounts();
 });
@@ -59,7 +60,7 @@ function reload() {
 }
 
 async function refreshCounts() {
-    if (me.role === 'TEAM_LEAD') {
+    if (hasTeamQueue(me.role)) {
         const team = await apiCall('/comp-off/pending/team');
         document.getElementById('count-team').textContent = team && team.length ? team.length : '';
     }
@@ -75,13 +76,11 @@ function isMine(req) {
 
 function canAct(req) {
     if (isMine(req)) return false;
-    if (me.role === 'HR_ADMIN') return req.status === 'PENDING_TL' || req.status === 'PENDING_HR';
-    if (me.role === 'TEAM_LEAD') return req.status === 'PENDING_TL';
-    return false;
+    return canApproveStatus(me.role, req.status);
 }
 
 function canWithdraw(req) {
-    return (req.status === 'PENDING_TL' || req.status === 'PENDING_HR') && (isMine(req) || me.role === 'HR_ADMIN');
+    return ['PENDING_TL', 'PENDING_HR', 'PENDING_HEAD'].includes(req.status) && (isMine(req) || me.role === 'HR_ADMIN');
 }
 
 function displayRequests(requests) {
@@ -127,10 +126,7 @@ async function submitCompOff(e) {
         reason: document.getElementById('compOffReason').value
     });
     if (result) {
-        const next = result.status === 'PENDING_TL'
-            ? `sent to ${result.reportingLeadName || 'your Team Lead'} for approval`
-            : 'sent to HR for approval';
-        showAlert(`Comp-off request for ${formatDays(result.days)} day(s) ${next}.`, 'success');
+        showAlert(`Comp-off request for ${formatDays(result.days)} day(s) ${submittedTo(result)}.`, 'success');
         document.getElementById('compOffForm').reset();
         if (currentView !== 'mine') showView('mine'); else reload();
     }
@@ -138,7 +134,9 @@ async function submitCompOff(e) {
 
 function approveCompOff(id, status) {
     let message = 'Approval comments (optional):';
-    if (me.role === 'HR_ADMIN' && status === 'PENDING_TL') {
+    if (status === 'PENDING_HEAD') {
+        message = 'Your approval is final: the days will be added to the comp-off balance.\n\n' + message;
+    } else if (me.role === 'HR_ADMIN' && status === 'PENDING_TL') {
         message = 'The Team Lead has not approved this yet. Approving now completes both steps and credits the days.\n\n' + message;
     } else if (me.role === 'HR_ADMIN') {
         message = 'Final approval: the days will be added to the employee\'s comp-off balance.\n\n' + message;

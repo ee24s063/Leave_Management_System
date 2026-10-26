@@ -52,7 +52,7 @@ public class EmployeeController {
     }
 
     /**
-     * HR: all employees (or active only); Team Lead: their reports
+     * HR: all employees (or active only); Team Lead: their reports; Lab Head: the HR staff they approve
      */
     @GetMapping
     public List<EmployeeView> getAllEmployees(@RequestParam(defaultValue = "false") boolean includeInactive) {
@@ -66,7 +66,10 @@ public class EmployeeController {
         if (me.hasRole(Role.TEAM_LEAD)) {
             return employeeService.toViews(employeeService.getTeamMembers(me.getEmployeeId()), false);
         }
-        throw new AccessDeniedException("Only Team Leads and HR can list employees");
+        if (me.hasRole(Role.LAB_HEAD)) {
+            return employeeService.toViews(employeeService.getStaffApprovedBy(me.getEmployeeId()), false);
+        }
+        throw new AccessDeniedException("Only Team Leads, HR and the Lab Head can list employees");
     }
 
     /**

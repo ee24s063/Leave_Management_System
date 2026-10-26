@@ -106,6 +106,16 @@ class CompOffServiceTest {
     }
 
     @Test
+    void labHeadApprovalCreditsHrStaffCompOff() {
+        AppUserDetails head = LeaveRequestServiceTest.user(5, Role.LAB_HEAD);
+        stored(LeaveStatus.PENDING_HEAD, WORKED, WORKED);
+        when(approvalSupport.headStepLevel(head, MEMBER)).thenReturn(ApprovalLevel.LAB_HEAD);
+        assertThat(service.approve(ID, head, null).getStatus()).isEqualTo(LeaveStatus.APPROVED);
+        verify(approvalSupport).record(RequestType.COMP_OFF, ID, ApprovalLevel.LAB_HEAD, ApprovalAction.APPROVED, head, null, false);
+        verify(leaveService).creditCompOff(MEMBER, BigDecimal.ONE, ID, "Worked on " + WORKED);
+    }
+
+    @Test
     void singleDayCreditSaysWhichDay() {
         stored(LeaveStatus.PENDING_HR, WORKED, WORKED);
         service.approve(ID, hr, null);

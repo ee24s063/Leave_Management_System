@@ -5,6 +5,7 @@ import com.leavemanagement.entity.*;
 import com.leavemanagement.repository.EmployeeRepository;
 import com.leavemanagement.repository.LeaveRequestRepository;
 import com.leavemanagement.repository.LeaveTypeRepository;
+import com.leavemanagement.config.RoleNames;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -31,6 +32,7 @@ public class ReportExportService {
     private final LeaveRequestViewMapper leaveRequestViewMapper;
     private final LeaveService leaveService;
     private final LeaveTypeRepository leaveTypeRepository;
+    private final RoleNames roleNames;
 
     public record ExcelFile(String filename, byte[] content, int rowCount) {
     }
@@ -101,7 +103,7 @@ public class ReportExportService {
             List<Object> row = new ArrayList<>(Arrays.asList(v.leaveRequestId(), v.employeeName(),
                     departments.get(v.employeeId()), orEmpty(v.reportingLeadName()), v.leaveTypeName(),
                     v.startDate(), v.endDate(), v.halfDay() == null ? "" : label(v.halfDay()), v.numberOfDays(),
-                    v.reason(), STATUS_LABELS.get(v.status()), v.requestDate()));
+                    v.reason(), statusLabel(v.status()), v.requestDate()));
             row.addAll(stepColumns(lead));
             row.addAll(stepColumns(hr));
             rows.add(row);
@@ -190,5 +192,10 @@ public class ReportExportService {
     // Safe for a file name: letters, digits and dashes
     private static String safe(String s) {
         return s.trim().replaceAll("[^A-Za-z0-9]+", "-").replaceAll("(^-|-$)", "").toLowerCase(Locale.ROOT);
+    }
+
+    private String statusLabel(LeaveStatus status) {
+        return status == LeaveStatus.PENDING_HEAD
+                ? "Waiting for " + roleNames.labHead() + " / Team Lead" : STATUS_LABELS.get(status);
     }
 }

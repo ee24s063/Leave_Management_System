@@ -1,6 +1,6 @@
 // Employees Management JavaScript (HR only)
 
-const ROLE_LABELS = { EMPLOYEE: 'Employee', TEAM_LEAD: 'Team Lead', HR_ADMIN: 'HR / Admin' };
+const ROLE_LABELS = { EMPLOYEE: 'Employee', TEAM_LEAD: 'Team Lead', HR_ADMIN: 'HR / Admin', LAB_HEAD: ROLE_NAMES.LAB_HEAD };
 const STATUS_COLORS = { ACTIVE: 'success', INACTIVE: 'secondary', RESIGNED: 'warning', RELIEVED: 'dark' };
 
 let employeesById = {};
@@ -9,7 +9,12 @@ let employeesById = {};
 document.addEventListener('DOMContentLoaded', function() {
     loadAllEmployees();
     document.getElementById('employeeForm').addEventListener('submit', saveEmployee);
+    document.getElementById('role').addEventListener('change', () => loadLeadOptions());
 });
+
+function isHrRole() {
+    return document.getElementById('role').value === 'HR_ADMIN';
+}
 
 // Load employees (active only unless "include inactive" is ticked)
 function loadAllEmployees() {
@@ -23,17 +28,39 @@ function loadAllEmployees() {
     loadLeadOptions();
 }
 
-// Reporting lead choices: active Team Leads and HR
+// Approver choices. Most employees: a reporting lead (active Team Leads and HR).
+// HR staff: a Lab Head (required) and, optionally, a Team Lead; other HR users cannot approve their leave.
 async function loadLeadOptions() {
     const employees = await apiCall('/employees');
     if (!employees) return;
-    const select = document.getElementById('reportingLead');
-    const current = select.value;
+    const hr = isHrRole();
     const editId = document.getElementById('editEmployeeId').value;
-    const leads = employees.filter(e => (e.role === 'TEAM_LEAD' || e.role === 'HR_ADMIN') && String(e.employeeId) !== editId);
-    select.innerHTML = '<option value="">None</option>' + leads.map(l =>
-        `<option value="${l.employeeId}">${escapeHtml(l.fullName)} (${escapeHtml(ROLE_LABELS[l.role])})</option>`).join('');
-    select.value = current;
+    const others = employees.filter(e => String(e.employeeId) !== editId);
+    const option = e => `<option value="${e.employeeId}">${escapeHtml(e.fullName)} (${escapeHtml(ROLE_LABELS[e.role])})</option>`;
+
+    const leadSelect = document.getElementById('reportingLead');
+    const currentLead = leadSelect.value;
+    const leads = others.filter(e => e.role === 'TEAM_LEAD' || (!hr && e.role === 'HR_ADMIN'));
+    leadSelect.innerHTML = '<option value="">None</option>' + leads.map(option).join('');
+    leadSelect.value = leads.some(l => String(l.employeeId) === currentLead) ? currentLead : '';
+    document.getElementById('reportingLeadLabel').textContent = hr ? 'Team Lead (optional, can also approve)' : 'Reporting Lead';
+
+    const headSelect = document.getElementById('headApprover');
+    const currentHead = headSelect.value;
+    headSelect.innerHTML = '<option value="">Choose...</option>' + others.filter(e => e.role === 'LAB_HEAD').map(option).join('');
+    headSelect.value = currentHead;
+    headSelect.required = hr;
+    document.getElementById('headApproverGroup').hidden = !hr;
+}
+
+// Who approves the employee's leave, shown in the list
+function approversCell(emp) {
+    if (emp.role === 'HR_ADMIN') {
+        const parts = [`${ROLE_NAMES.LAB_HEAD}: ${emp.headApproverName || 'not set'}`];
+        if (emp.reportingLeadName) parts.push(`Team Lead: ${emp.reportingLeadName}`);
+        return parts.map(escapeHtml).join('<br>');
+    }
+    return escapeHtml(emp.reportingLeadName || '-');
 }
 
 // Display employees in table
@@ -56,7 +83,7 @@ function displayEmployees(employees) {
             <td>${escapeHtml(emp.department)}</td>
             <td>${escapeHtml(emp.designation)}</td>
             <td>${escapeHtml(ROLE_LABELS[emp.role] || '-')}</td>
-            <td>${escapeHtml(emp.reportingLeadName || '-')}</td>
+            <td>${approversCell(emp)}</td>
             <td><span class="badge bg-${STATUS_COLORS[emp.status] || 'info'}">${escapeHtml(emp.status)}</span></td>
             <td class="text-nowrap">
                 <button class="btn btn-sm btn-warning" onclick="editEmployee(${emp.employeeId})">Edit</button>
@@ -87,7 +114,9 @@ async function saveEmployee(e) {
     e.preventDefault();
     const editId = document.getElementById('editEmployeeId').value;
     const leadValue = document.getElementById('reportingLead').value;
+    const headValue = document.getElementById('headApprover').value;
     const data = formValues();
+    if (isHrRole() && headValue) data.headApproverId = parseInt(headValue);
 
     if (editId) {
         delete data.dateOfJoining;
@@ -136,13 +165,16 @@ function editEmployee(employeeId) {
     document.getElementById('dateOfJoining').value = emp.dateOfJoining;
     document.getElementById('dateOfJoining').disabled = true;
     document.getElementById('role').value = emp.role || 'EMPLOYEE';
+    document.getElementById('headApprover').value = '';
     document.getElementById('status').value = emp.status;
     document.getElementById('statusGroup').hidden = false;
     document.getElementById('formTitle').textContent = `Edit Employee #${emp.employeeId}`;
     document.getElementById('submitBtn').textContent = 'Save Changes';
     document.getElementById('cancelEditBtn').hidden = false;
+    document.getElementById('reportingLead').value = '';
     loadLeadOptions().then(() => {
         document.getElementById('reportingLead').value = emp.reporting_LeadId || '';
+        document.getElementById('headApprover').value = emp.headApproverId || '';
     });
     window.scrollTo({ top: 0, behavior: 'smooth' });
 }

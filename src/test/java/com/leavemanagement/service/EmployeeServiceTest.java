@@ -1,5 +1,6 @@
 package com.leavemanagement.service;
 
+import com.leavemanagement.config.RoleNames;
 import com.leavemanagement.dto.CreateEmployeeRequest;
 import com.leavemanagement.dto.CreatedEmployeeResponse;
 import com.leavemanagement.dto.UpdateEmployeeRequest;
@@ -15,6 +16,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
@@ -41,6 +43,7 @@ class EmployeeServiceTest {
     @Mock EmployeeRepository employees;
     @Mock UserAccountRepository accounts;
     @Mock PasswordEncoder encoder;
+    @Spy RoleNames roleNames = new RoleNames("Lab Head");
     @InjectMocks EmployeeService service;
 
     UserAccount leadAccount, memberAccount;
@@ -88,11 +91,16 @@ class EmployeeServiceTest {
 
     private CreateEmployeeRequest create(String email, Integer leadId) {
         return new CreateEmployeeRequest(" Asha ", "Rao", email, "", "IT", "Engineer",
-                LocalDate.of(2025, 6, 1), 60000.0, leadId, Role.EMPLOYEE);
+                LocalDate.of(2025, 6, 1), 60000.0, leadId, Role.EMPLOYEE, null);
+    }
+
+    private CreateEmployeeRequest createHr(Integer leadId, Integer headId) {
+        return new CreateEmployeeRequest("Hema", "Rao", "hema@test.com", "", "HR", "HR Officer",
+                LocalDate.of(2025, 6, 1), 60000.0, leadId, Role.HR_ADMIN, headId);
     }
 
     private UpdateEmployeeRequest update(EmployeeStatus status, Integer leadId, Role role, String email) {
-        return new UpdateEmployeeRequest(null, null, email, null, null, null, null, status, leadId, null, role);
+        return new UpdateEmployeeRequest(null, null, email, null, null, null, null, status, leadId, null, role, null);
     }
 
     @Test

@@ -9,7 +9,8 @@ import jakarta.validation.constraints.Positive;
 import java.time.LocalDate;
 
 /**
- * HR request to create an employee together with their login account
+ * HR request to create an employee together with their login account.
+ * HR staff need a headApproverId (their Lab Head); their reporting lead, if any, must be a Team Lead.
  */
 public record CreateEmployeeRequest(
         @NotBlank String firstName,
@@ -21,5 +22,6 @@ public record CreateEmployeeRequest(
         @NotNull LocalDate dateOfJoining,
         @NotNull @Positive Double salary,
         Integer reporting_LeadId,
-        @NotNull Role role) {
+        @NotNull Role role,
+        Integer headApproverId) {
 }

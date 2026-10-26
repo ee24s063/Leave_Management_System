@@ -85,14 +85,44 @@ function getCurrentUser() {
     return currentUserPromise;
 }
 
+// Names shown for each role; the Lab Head's name is set on the server (app.role-names.lab-head)
+const ROLE_NAMES = Object.assign({ EMPLOYEE: 'Employee', TEAM_LEAD: 'Team Lead', HR_ADMIN: 'HR', LAB_HEAD: 'Lab Head' },
+    window.SERVER_ROLE_NAMES || {});
+
 // Leave request statuses: display label and Bootstrap badge colour
 const LEAVE_STATUS = {
     PENDING_TL: { label: 'Waiting for Team Lead', badge: 'warning' },
     PENDING_HR: { label: 'Waiting for HR', badge: 'info' },
+    PENDING_HEAD: { label: `Waiting for ${ROLE_NAMES.LAB_HEAD} / Team Lead`, badge: 'warning' },
     APPROVED: { label: 'Approved', badge: 'success' },
     REJECTED: { label: 'Rejected', badge: 'danger' },
     CANCELLED: { label: 'Cancelled', badge: 'secondary' }
 };
+
+// Roles with an approvals queue of their own ("Team Approvals")
+function hasTeamQueue(role) {
+    return role === 'TEAM_LEAD' || role === 'LAB_HEAD';
+}
+
+// Whether the user can approve/reject a request at its current step (the server checks again:
+// a Team Lead only for their own reports, a Lab Head only for the HR staff they approve).
+// HR staff's requests (PENDING_HEAD) go to their Lab Head or chosen Team Lead, never to other HR users.
+function canApproveStatus(role, status) {
+    if (role === 'HR_ADMIN') return status === 'PENDING_TL' || status === 'PENDING_HR';
+    if (role === 'TEAM_LEAD') return status === 'PENDING_TL' || status === 'PENDING_HEAD';
+    if (role === 'LAB_HEAD') return status === 'PENDING_HEAD';
+    return false;
+}
+
+// Where a newly submitted request went, for the confirmation message
+function submittedTo(result) {
+    if (result.status === 'PENDING_TL') return `sent to ${result.reportingLeadName || 'your Team Lead'} for approval`;
+    if (result.status === 'PENDING_HEAD') {
+        return `sent to your ${ROLE_NAMES.LAB_HEAD}${result.reportingLeadName ? ' and to ' + result.reportingLeadName : ''}`
+            + ' for approval (either one can approve it)';
+    }
+    return 'sent to HR for approval';
+}
 
 function statusBadge(status) {
     const s = LEAVE_STATUS[status] || { label: status, badge: 'light' };
@@ -103,7 +133,7 @@ function statusBadge(status) {
 function approvalTrail(approvals) {
     if (!approvals || approvals.length === 0) return '';
     return approvals.map(a => {
-        const step = a.level === 'TEAM_LEAD' ? 'Team Lead' : 'HR';
+        const step = a.level === 'TEAM_LEAD' ? 'Team Lead' : a.level === 'LAB_HEAD' ? ROLE_NAMES.LAB_HEAD : 'HR';
         const action = a.action === 'APPROVED' ? 'approved' : 'rejected';
         return `${step}: ${action} by ${a.approverName} (${formatDate(a.actedAt)})${a.comments ? ' - ' + a.comments : ''}`;
     }).join('\n');

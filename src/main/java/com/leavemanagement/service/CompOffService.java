@@ -56,7 +56,7 @@ public class CompOffService {
             throw new IllegalArgumentException("Please describe the work done");
         }
         if (!compOffRequestRepository.findOverlapping(employeeId, req.workedFrom(), req.workedTo(),
-                EnumSet.of(LeaveStatus.PENDING_TL, LeaveStatus.PENDING_HR, LeaveStatus.APPROVED)).isEmpty()) {
+                EnumSet.of(LeaveStatus.PENDING_TL, LeaveStatus.PENDING_HR, LeaveStatus.PENDING_HEAD, LeaveStatus.APPROVED)).isEmpty()) {
             throw new IllegalStateException("Comp-off has already been requested for one or more of these days");
         }
         CompOffRequest request = new CompOffRequest();
@@ -97,6 +97,12 @@ public class CompOffService {
                 approvalSupport.record(RequestType.COMP_OFF, id, ApprovalLevel.HR, ApprovalAction.APPROVED, actor, comments, false);
                 finalApprove(request);
             }
+            case PENDING_HEAD -> {
+                // HR staff: the Lab Head or the chosen Team Lead gives the final approval (AccessPolicy checked who)
+                approvalSupport.record(RequestType.COMP_OFF, id, approvalSupport.headStepLevel(actor, request.getEmployeeId()),
+                        ApprovalAction.APPROVED, actor, comments, false);
+                finalApprove(request);
+            }
             default -> throw new IllegalStateException("This request is no longer pending (" + request.getStatus() + ")");
         }
         return compOffRequestRepository.save(request);
@@ -114,8 +120,10 @@ public class CompOffService {
         if (!request.getStatus().isPending()) {
             throw new IllegalStateException("This request is no longer pending (" + request.getStatus() + ")");
         }
-        approvalSupport.record(RequestType.COMP_OFF, id, isHr ? ApprovalLevel.HR : ApprovalLevel.TEAM_LEAD,
-                ApprovalAction.REJECTED, actor, comments, false);
+        ApprovalLevel level = request.getStatus() == LeaveStatus.PENDING_HEAD
+                ? approvalSupport.headStepLevel(actor, request.getEmployeeId())
+                : isHr ? ApprovalLevel.HR : ApprovalLevel.TEAM_LEAD;
+        approvalSupport.record(RequestType.COMP_OFF, id, level, ApprovalAction.REJECTED, actor, comments, false);
         request.setStatus(LeaveStatus.REJECTED);
         return compOffRequestRepository.save(request);
     }
