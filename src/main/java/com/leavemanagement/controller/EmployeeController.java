@@ -2,6 +2,7 @@ package com.leavemanagement.controller;
 
 import com.leavemanagement.dto.CreateEmployeeRequest;
 import com.leavemanagement.dto.CreatedEmployeeResponse;
+import com.leavemanagement.dto.DeleteEmployeeRequest;
 import com.leavemanagement.dto.EmployeeView;
 import com.leavemanagement.dto.UpdateEmployeeRequest;
 import com.leavemanagement.entity.Employee;
@@ -9,6 +10,7 @@ import com.leavemanagement.entity.Role;
 import com.leavemanagement.security.AccessPolicy;
 import com.leavemanagement.security.AppUserDetails;
 import com.leavemanagement.security.CurrentUser;
+import com.leavemanagement.service.EmployeeDeletionService;
 import com.leavemanagement.service.EmployeeService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -29,6 +31,7 @@ import java.util.NoSuchElementException;
 @RequiredArgsConstructor
 public class EmployeeController {
     private final EmployeeService employeeService;
+    private final EmployeeDeletionService employeeDeletionService;
     private final CurrentUser currentUser;
     private final AccessPolicy accessPolicy;
 
@@ -84,8 +87,9 @@ public class EmployeeController {
      * Search employees by name (HR)
      */
     @GetMapping("/search")
-    public List<EmployeeView> searchEmployees(@RequestParam String name) {
-        return employeeService.toViews(employeeService.searchEmployeesByName(name), true);
+    public List<EmployeeView> searchEmployees(@RequestParam String name,
+                                              @RequestParam(defaultValue = "false") boolean includeInactive) {
+        return employeeService.toViews(employeeService.searchEmployeesByName(name, includeInactive), true);
     }
 
     /**
@@ -111,6 +115,15 @@ public class EmployeeController {
     public ResponseEntity<Void> deactivateEmployee(@PathVariable Integer id) {
         employeeService.deactivateEmployee(id);
         return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * Delete an employee and all of their data permanently (admin account only; the full name must be typed)
+     */
+    @PostMapping("/{id}/delete-permanently")
+    public Map<String, String> deletePermanently(@PathVariable Integer id, @RequestBody DeleteEmployeeRequest request) {
+        Employee deleted = employeeDeletionService.deletePermanently(id, request.confirmName(), currentUser.get());
+        return Map.of("message", deleted.getFullName() + " was deleted permanently");
     }
 
     /**

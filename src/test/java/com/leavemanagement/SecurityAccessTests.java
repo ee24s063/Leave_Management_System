@@ -215,6 +215,20 @@ class SecurityAccessTests {
     }
 
     @Test
+    void searchFindsFullNamesAndInactiveEmployeesOnlyWhenAsked() throws Exception {
+        other.setStatus(EmployeeStatus.RESIGNED);
+        employeeRepository.save(other);
+        mockMvc.perform(get("/api/employees/search").param("name", "omar").with(as(hrAccount)))
+                .andExpect(jsonPath("$", hasSize(0)));
+        mockMvc.perform(get("/api/employees/search").param("name", "omar").param("includeInactive", "true").with(as(hrAccount)))
+                .andExpect(jsonPath("$", hasSize(1)))
+                .andExpect(jsonPath("$[0].status").value("RESIGNED"));
+        mockMvc.perform(get("/api/employees/search").param("name", " MIA test ").with(as(hrAccount)))
+                .andExpect(jsonPath("$", hasSize(1)))
+                .andExpect(jsonPath("$[0].fullName").value("Mia Test"));
+    }
+
+    @Test
     void onlyHrCreatesEmployees() throws Exception {
         String body = """
                 {"firstName":"Nia","lastName":"New","email":"nia@test.com","department":"IT","designation":"Dev",

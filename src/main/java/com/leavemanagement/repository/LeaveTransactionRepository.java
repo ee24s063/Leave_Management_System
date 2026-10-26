@@ -21,4 +21,9 @@ public interface LeaveTransactionRepository extends JpaRepository<LeaveTransacti
     // Total days per employee for one kind of change, e.g. all comp-off credits; rows are [employeeId, sum]
     @Query("SELECT t.employeeId, SUM(t.days) FROM LeaveTransaction t WHERE t.type = :type GROUP BY t.employeeId")
     List<Object[]> sumDaysByEmployee(@Param("type") TransactionType type);
+
+    // Used when an employee is deleted permanently
+    long deleteByEmployeeId(Integer employeeId);
+
+    List<LeaveTransaction> findByCreatedByUserId(Integer createdByUserId);
 }

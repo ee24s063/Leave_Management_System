@@ -4,9 +4,12 @@ const ROLE_LABELS = { EMPLOYEE: 'Employee', TEAM_LEAD: 'Team Lead', HR_ADMIN: 'H
 const STATUS_COLORS = { ACTIVE: 'success', INACTIVE: 'secondary', RESIGNED: 'warning', RELIEVED: 'dark' };
 
 let employeesById = {};
+let isAdmin = false; // the built-in admin account may also delete employees permanently
 
 // Load all employees on page load
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', async function() {
+    const me = await getCurrentUser();
+    isAdmin = !!(me && me.admin);
     loadAllEmployees();
     document.getElementById('employeeForm').addEventListener('submit', saveEmployee);
     document.getElementById('role').addEventListener('change', () => loadLeadOptions());
@@ -70,7 +73,9 @@ function displayEmployees(employees) {
     employeesById = Object.fromEntries(employees.map(e => [e.employeeId, e]));
 
     if (employees.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="10" class="text-center">No employees found</td></tr>';
+        const message = document.getElementById('includeInactive').checked ? 'No employees found.'
+            : 'No active employees found. Tick "Include inactive" to also see inactive, resigned and relieved employees.';
+        tbody.innerHTML = `<tr><td colspan="10" class="text-center">${message}</td></tr>`;
         return;
     }
 
@@ -89,7 +94,10 @@ function displayEmployees(employees) {
             <td class="text-nowrap">
                 <button class="btn btn-sm btn-warning" onclick="editEmployee(${emp.employeeId})">Edit</button>
                 <button class="btn btn-sm btn-info" onclick="resetPassword(${emp.employeeId})">Reset password</button>
-                ${emp.status === 'ACTIVE' ? `<button class="btn btn-sm btn-danger" onclick="deactivateEmployee(${emp.employeeId})">Deactivate</button>` : ''}
+                ${emp.status === 'ACTIVE'
+                    ? `<button class="btn btn-sm btn-danger" onclick="deactivateEmployee(${emp.employeeId})">Deactivate</button>`
+                    : `<button class="btn btn-sm btn-success" onclick="activateEmployee(${emp.employeeId})">Activate</button>`}
+                ${isAdmin ? `<button class="btn btn-sm btn-outline-danger" onclick="deleteEmployeePermanently(${emp.employeeId})">Delete permanently</button>` : ''}
             </td>
         `;
         tbody.appendChild(row);
@@ -199,7 +207,9 @@ function searchEmployees() {
         return;
     }
 
-    apiCall(`/employees/search?name=${encodeURIComponent(name)}`)
+    // Follows the "Include inactive" box, like the full list
+    const includeInactive = document.getElementById('includeInactive').checked;
+    apiCall(`/employees/search?name=${encodeURIComponent(name)}&includeInactive=${includeInactive}`)
         .then(data => {
             if (data) {
                 displayEmployees(data);
@@ -227,5 +237,37 @@ function deactivateEmployee(employeeId) {
                     loadAllEmployees();
                 }
             });
+    }
+}
+
+// Make an inactive, resigned or relieved employee active again (their login is enabled)
+async function activateEmployee(employeeId) {
+    const emp = employeesById[employeeId];
+    if (!confirm(`Activate ${emp ? emp.fullName : 'this employee'} again? Their login will be enabled.`)) return;
+    const result = await apiCall(`/employees/${employeeId}`, 'PUT', { status: 'ACTIVE' });
+    if (result) {
+        showAlert(`${result.fullName} is active again.`, 'success');
+        loadAllEmployees();
+    }
+}
+
+// Admin only: delete the employee and all of their data. The full name must be typed to confirm.
+async function deleteEmployeePermanently(employeeId) {
+    const emp = employeesById[employeeId];
+    if (!emp) return;
+    const typed = prompt(`DELETE PERMANENTLY: ${emp.fullName} (#${emp.employeeId})\n\n`
+        + 'This removes the employee, their login, all their leave and comp-off requests, balances and balance history, '
+        + 'and every approval they gave. It cannot be undone. (To keep their records, use Deactivate instead.)\n\n'
+        + `Type the full name "${emp.fullName}" to confirm:`);
+    if (typed === null) return;
+    if (typed.trim().replace(/\s+/g, ' ').toLowerCase() !== emp.fullName.trim().replace(/\s+/g, ' ').toLowerCase()) {
+        showAlert('The name did not match, so nothing was deleted.', 'warning');
+        return;
+    }
+    const result = await apiCall(`/employees/${employeeId}/delete-permanently`, 'POST', { confirmName: typed });
+    if (result) {
+        showAlert(result.message + '.', 'success');
+        resetForm();
+        loadAllEmployees();
     }
 }

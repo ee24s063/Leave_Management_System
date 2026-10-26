@@ -29,6 +29,8 @@ public interface CompOffRequestRepository extends JpaRepository<CompOffRequest, 
                                          @Param("workedTo") LocalDate workedTo,
                                          @Param("statuses") Collection<LeaveStatus> statuses);
 
+    List<CompOffRequest> findByEmployeeId(Integer employeeId);
+
     long countByStatus(LeaveStatus status);
 
     long countByStatusAndEmployeeIdIn(LeaveStatus status, Collection<Integer> employeeIds);
