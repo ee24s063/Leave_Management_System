@@ -37,9 +37,11 @@ public class EmployeeService {
     private final UserAccountRepository userAccountRepository;
     private final PasswordEncoder passwordEncoder;
     private final RoleNames roleNames;
+    private final MailService mailService;
 
     /**
-     * Create an employee and their login account (username = email) with a temporary password
+     * Create an employee and their login account (username = email) with a temporary password, which is emailed
+     * to them and never shown. If the email cannot be sent, nothing is saved.
      */
     public CreatedEmployeeResponse createEmployee(CreateEmployeeRequest req) {
         String email = req.email().trim();
@@ -78,8 +80,9 @@ public class EmployeeService {
         account.setEnabled(true);
         account.setMustChangePassword(true);
         userAccountRepository.save(account);
+        mailService.sendTemporaryPassword(email, employee.getFullName(), email, temporaryPassword, false);
 
-        return new CreatedEmployeeResponse(toView(employee, true), email, temporaryPassword);
+        return new CreatedEmployeeResponse(toView(employee, true), email, email);
     }
 
     /**
@@ -158,9 +161,12 @@ public class EmployeeService {
     }
 
     /**
-     * Issue a new temporary password; the employee must change it at next login
+     * Issue a new temporary password and email it; the employee must change it at next login.
+     * Returns the address it was sent to. If the email cannot be sent, the old password stays.
      */
     public String resetPassword(Integer employeeId) {
+        Employee employee = employeeRepository.findById(employeeId)
+                .orElseThrow(() -> new NoSuchElementException("Employee not found"));
         UserAccount account = userAccountRepository.findByEmployeeId(employeeId)
                 .orElseThrow(() -> new NoSuchElementException("This employee has no login account"));
         String temporaryPassword = PasswordGenerator.generate();
@@ -168,7 +174,9 @@ public class EmployeeService {
         account.setMustChangePassword(true);
         account.revokeTokens(); // logs the user out everywhere
         userAccountRepository.save(account);
-        return temporaryPassword;
+        mailService.sendTemporaryPassword(employee.getEmail(), employee.getFullName(), account.getUsername(),
+                temporaryPassword, true);
+        return employee.getEmail();
     }
 
     /**

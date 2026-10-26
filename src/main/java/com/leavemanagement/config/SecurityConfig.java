@@ -70,6 +70,8 @@ public class SecurityConfig {
 
                 // HR-only pages and API docs
                 .requestMatchers("/employees").hasRole(HR)
+                // Setup checks: the admin account only (AdminController also checks it is the admin, not any HR user)
+                .requestMatchers("/api/admin/**").hasRole(HR)
 
                 // Dashboard: HR sees the organisation, a Team Lead sees their own team
                 .requestMatchers("/dashboard").hasAnyRole(LEAD, HR)

@@ -19,11 +19,24 @@
             </div>
         </div>
 
-        <!-- Temporary password notice (stays until dismissed so HR can copy it) -->
-        <div class="alert alert-warning" id="passwordNotice" hidden>
-            <strong>Login created.</strong> Give these details to the employee; they must change the password at first login.<br>
-            Username: <code id="noticeUsername"></code> &nbsp; Temporary password: <code id="noticePassword"></code>
-            <button type="button" class="btn-close float-end" onclick="document.getElementById('passwordNotice').hidden = true"></button>
+        <!-- Shown after a temporary password has been emailed (stays until dismissed); the password itself is never shown -->
+        <div class="alert alert-success" id="sentNotice" hidden>
+            <span id="sentNoticeText"></span>
+            <button type="button" class="btn-close float-end" onclick="document.getElementById('sentNotice').hidden = true"></button>
+        </div>
+
+        <!-- Admin only: check the email sender before creating real employees -->
+        <div class="card mb-4" id="mailCheck" hidden>
+            <div class="card-header bg-light">
+                <h6 class="mb-0">Email check (admin)</h6>
+            </div>
+            <div class="card-body">
+                <p class="mb-2 small" id="mailStatus">Checking the email settings...</p>
+                <div class="input-group" style="max-width: 560px">
+                    <input type="email" class="form-control" id="testEmailTo" placeholder="Send a test email to (e.g. your office email)">
+                    <button class="btn btn-outline-primary" type="button" id="testEmailBtn" onclick="sendTestEmail()">Send test email</button>
+                </div>
+            </div>
         </div>
 
         <!-- Add / Edit Employee Form -->

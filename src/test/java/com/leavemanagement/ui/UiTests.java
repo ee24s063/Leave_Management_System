@@ -1,5 +1,6 @@
 package com.leavemanagement.ui;
 
+import com.leavemanagement.RecordingMailSender;
 import com.leavemanagement.entity.*;
 import com.leavemanagement.repository.*;
 import org.junit.jupiter.api.*;
@@ -54,6 +55,7 @@ class UiTests {
     @Autowired LeaveTypeRepository leaveTypeRepository;
     @Autowired LeaveBalanceRepository leaveBalanceRepository;
     @Autowired PasswordEncoder passwordEncoder;
+    @Autowired RecordingMailSender mailSender;
 
     WebDriver driver;
     WebDriverWait wait;
@@ -221,7 +223,7 @@ class UiTests {
 
     @Test
     @Order(9)
-    void hrCreatesAnEmployeeAndSeesTheTemporaryPassword() {
+    void hrCreatesAnEmployeeAndThePasswordIsEmailed() {
         open("/employees");
         type("firstName", "Omar");
         type("lastName", "Khan");
@@ -232,9 +234,11 @@ class UiTests {
         setDate("dateOfJoining", LocalDate.of(2026, 1, 5));
         new Select(driver.findElement(By.id("role"))).selectByValue("EMPLOYEE");
         clickWhenReady(By.id("submitBtn"));
-        wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("passwordNotice")));
-        assertThat(text("#noticeUsername")).isEqualTo("omar@ui.test");
-        assertThat(text("#noticePassword")).hasSize(12);
+        wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("sentNotice")));
+        assertThat(text("#sentNoticeText"))
+                .isEqualTo("Employee added. The temporary password has been sent to omar@ui.test.");
+        assertThat(mailSender.last().getTo()).containsExactly("omar@ui.test");
+        assertThat(mailSender.lastTemporaryPassword()).hasSize(12);
         waitForText("#employeesList", "Omar Khan");
         logout();
     }

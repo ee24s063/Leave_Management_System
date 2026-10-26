@@ -44,6 +44,7 @@ class SecurityAccessTests {
     @Autowired LeaveBalanceRepository leaveBalanceRepository;
     @Autowired LeaveRequestRepository leaveRequestRepository;
     @Autowired PasswordEncoder passwordEncoder;
+    @Autowired RecordingMailSender mailSender;
 
     UserAccount hrAccount, leadAccount, memberAccount, otherAccount;
     Employee hr, lead, member, other;
@@ -175,8 +176,38 @@ class SecurityAccessTests {
     void passwordResetByHrCancelsTokens() throws Exception {
         String token = apiLogin("member@test.com");
         mockMvc.perform(post("/api/employees/" + member.getEmployeeId() + "/reset-password").with(as(hrAccount)).with(csrf()))
-                .andExpect(status().isOk());
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.message").value("A new temporary password has been sent to member@test.com"))
+                .andExpect(jsonPath("$.temporaryPassword").doesNotExist());
         mockMvc.perform(get("/api/me").with(bearer(token))).andExpect(status().isUnauthorized());
+        assertThat(mailSender.last().getSubject()).contains("your password has been reset");
+        UserAccount updated = userAccountRepository.findById(memberAccount.getUserId()).orElseThrow();
+        assertThat(passwordEncoder.matches(mailSender.lastTemporaryPassword(), updated.getPasswordHash())).isTrue();
+    }
+
+    @Test
+    void onlyTheAdminAccountSendsTestEmails() throws Exception {
+        UserAccount admin = new UserAccount();
+        admin.setUsername("admin@test.local");
+        admin.setPasswordHash(passwordEncoder.encode("Secret123!"));
+        admin.setRole(Role.HR_ADMIN);
+        admin.setEnabled(true);
+        admin.setMustChangePassword(false);
+        admin = userAccountRepository.save(admin);
+
+        mockMvc.perform(get("/api/admin/mail-status").with(as(admin)))
+                .andExpect(jsonPath("$.configured").value(true))
+                .andExpect(jsonPath("$.from").value("lms-test@example.com"));
+        mockMvc.perform(post("/api/admin/test-email").with(as(admin)).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"to\":\"me@office.test\"}"))
+                .andExpect(status().isOk());
+        assertThat(mailSender.last().getTo()).containsExactly("me@office.test");
+        assertThat(mailSender.last().getFrom()).isEqualTo("lms-test@example.com");
+
+        mockMvc.perform(post("/api/admin/test-email").with(as(hrAccount)).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"to\":\"me@office.test\"}"))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/admin/mail-status").with(as(memberAccount))).andExpect(status().isForbidden());
     }
 
     @Test
@@ -241,12 +272,17 @@ class SecurityAccessTests {
                         .contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.username").value("nia@test.com"))
-                .andExpect(jsonPath("$.temporaryPassword").isNotEmpty())
+                .andExpect(jsonPath("$.passwordSentTo").value("nia@test.com"))
+                .andExpect(jsonPath("$.temporaryPassword").doesNotExist())
                 .andExpect(jsonPath("$.employee.reporting_LeadId").value(lead.getEmployeeId()));
 
         UserAccount created = userAccountRepository.findByUsernameIgnoreCase("nia@test.com").orElseThrow();
         assertThat(created.isMustChangePassword()).isTrue();
         assertThat(created.getRole()).isEqualTo(Role.EMPLOYEE);
+        // The emailed password is the one that works
+        assertThat(mailSender.last().getTo()).containsExactly("nia@test.com");
+        assertThat(mailSender.last().getText()).contains("Username:            nia@test.com");
+        assertThat(passwordEncoder.matches(mailSender.lastTemporaryPassword(), created.getPasswordHash())).isTrue();
     }
 
     @Test

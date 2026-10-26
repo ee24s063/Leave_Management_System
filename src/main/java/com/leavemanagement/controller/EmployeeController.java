@@ -105,7 +105,7 @@ public class EmployeeController {
      */
     @PostMapping("/{id}/reset-password")
     public Map<String, String> resetPassword(@PathVariable Integer id) {
-        return Map.of("temporaryPassword", employeeService.resetPassword(id));
+        return Map.of("message", "A new temporary password has been sent to " + employeeService.resetPassword(id));
     }
 
     /**

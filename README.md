@@ -28,7 +28,7 @@ A Spring Boot web application for managing employees, leave balances and leave r
   - **HR / Admin:** manage employees, roles and reporting leads, leave types and balances (including adjustments); view all requests and give the **final approval**.
   - **Lab Head** (role code `LAB_HEAD`): everything an Employee can do, plus approve or reject the leave and comp-off of the **HR staff** they are assigned to, and see those staff members' requests and balances. The name shown to users is a setting (`app.role-names.lab-head`, or the environment variable `LMS_LAB_HEAD_NAME`), so the role can be renamed without changing code.
 - Nobody can approve or reject their own leave request, and HR users cannot approve or reject an HR colleague's request.
-- New accounts get a **temporary password** that must be changed at first login.
+- New accounts get a **temporary password**, **emailed** to the employee's email address and never shown on screen; it must be changed at first login. HR's "Reset password" emails a new one the same way. If the email cannot be sent, nothing changes (the employee is not added, or the old password stays) and HR sees a warning.
 - HR can reset a user's password. Deactivating an employee (or setting them to Resigned or Relieved) disables their login; **Activate** enables it again.
 - **Delete permanently (admin account only):** the built-in admin login (`admin@lms.local`, which has no employee record) can delete an employee and everything about them: the record, login, leave and comp-off requests, balances, balance history, and every approval they gave or received. The admin must type the employee's full name to confirm. It is refused while the person is anyone's Team Lead or Lab Head. Balance adjustments they made for other employees stay (they are part of those balances), without the link to their account. HR users can only activate and deactivate.
 - HR's changes apply immediately, even to users who are already logged in: every request re-reads the account, so a disabled user is logged out on their next click, and a changed role takes effect on the next request.
@@ -154,8 +154,15 @@ The app runs at **http://localhost:8080/lms/**.
 | `LMS_JWT_EXPIRATION_MINUTES` | 480 (8 hours) | How long a login lasts |
 | `LMS_COOKIE_SECURE` | false | Set to `true` when the app is served over HTTPS |
 | `LMS_LAB_HEAD_NAME` | Lab Head | The name shown for the `LAB_HEAD` role on pages, messages and Excel exports |
+| `LMS_MAIL_USERNAME` | (none) | The mail account that sends temporary passwords, e.g. `hrsgbc@htic.iitm.ac.in`. **Required** to add employees or reset passwords |
+| `LMS_MAIL_PASSWORD` | (none) | That account's **App password** (Google Account → Security → App passwords). Never put it in the code or in Git |
+| `LMS_MAIL_FROM` | `LMS_MAIL_USERNAME` | The "From" address, if different from the login |
+| `LMS_MAIL_HOST` / `LMS_MAIL_PORT` | `smtp.gmail.com` / `587` | Mail server; the defaults suit the institute's Google mail |
+| `LMS_LOGIN_URL` | `http://localhost:8081/lms/login` | Login link written in the email |
+
+   Set the mail variables once in PowerShell (then reopen the terminal / VS Code): `setx LMS_MAIL_USERNAME "hrsgbc@htic.iitm.ac.in"` and `setx LMS_MAIL_PASSWORD "<app password>"`. Logged in as `admin@lms.local`, the **Employees** page shows which address mail is sent from and has a **Send test email** button to check delivery (look in the Junk folder too).
 3. On **Leave Balance**, add the leave types you use (for example Sick Leave, Casual Leave).
-4. On **Employees**, create your **Team Leads first**, then the employees who report to them. Each creation shows the new user's temporary password once; hand it to them.
+4. On **Employees**, create your **Team Leads first**, then the employees who report to them. Each new user receives their temporary password by email.
 5. On **Leave Balance**, create each employee's balance for the year.
 
 The admin account is not an employee, so it cannot apply for leave. Create a separate employee record with the HR role for anyone in HR who takes leave.
@@ -195,9 +202,11 @@ curl -H "Authorization: Bearer $TOKEN" http://localhost:8080/lms/api/reports/sum
 | --- | --- | --- | --- |
 | GET | `/employees?includeInactive=false` | Team Lead (own team), HR (all) | List employees |
 | GET | `/employees/{id}` | Self, own lead, HR | Employee details (salary shown to HR only) |
-| POST | `/employees` | HR | Create employee + login; returns `temporaryPassword` |
+| POST | `/employees` | HR | Create employee + login; the temporary password is emailed (`passwordSentTo` in the response); 409 if the email cannot be sent |
 | PUT | `/employees/{id}` | HR | Update fields, `status`, `role`, `reporting_LeadId` (or `clearReportingLead: true`), `headApproverId` (HR staff only) |
-| POST | `/employees/{id}/reset-password` | HR | New temporary password |
+| POST | `/employees/{id}/reset-password` | HR | New temporary password, emailed to the employee |
+| GET | `/admin/mail-status` | Admin account only | Whether email is set up, and the sender address |
+| POST | `/admin/test-email` | Admin account only | `{"to": "..."}`: sends a test email |
 | DELETE | `/employees/{id}` | HR | Deactivate and disable login |
 | POST | `/employees/{id}/delete-permanently` | Admin account only | `{"confirmName": "<full name>"}`; deletes the employee and all of their data (409 while they are someone's Team Lead or Lab Head) |
 | GET | `/employees/search?name=` | HR | Search by name |
@@ -294,7 +303,7 @@ src/test/java/     Spring Boot + MockMvc tests: access rules, approval workflow,
 
 ## Testing
 ```bash
-mvn test                          # all 284 tests, about a minute
+mvn test                          # all 290 tests, about a minute
 mvn test -DexcludedGroups=ui      # without the browser tests
 mvn test -Dtest=UiTests           # only the browser tests
 ```
@@ -302,13 +311,13 @@ Three levels:
 
 | Level | Where | Tests |
 | --- | --- | --- |
-| Unit: one module at a time, no database (JUnit 5, Mockito) | `src/test/java/com/leavemanagement/{util,entity,security,service}` | 159 |
-| Integration: whole app through the REST API with a real database | `src/test/java/com/leavemanagement/*Tests.java` | 112 |
+| Unit: one module at a time, no database (JUnit 5, Mockito) | `src/test/java/com/leavemanagement/{util,entity,security,service}` | 163 |
+| Integration: whole app through the REST API with a real database | `src/test/java/com/leavemanagement/*Tests.java` | 114 |
 | UI: a real headless browser clicking through the pages as each role (Selenium) | `src/test/java/com/leavemanagement/ui/UiTests.java` | 13 |
 
 The UI tests use Microsoft Edge, or Google Chrome when Edge's driver cannot be downloaded; with neither available they are skipped. They save a screenshot per scenario to `target/ui-screenshots`.
 
-Integration tests use a temporary SQLite file under `target/` and cover login (form and API, token cookie, Bearer tokens, altered tokens, logout and password changes cancelling tokens), CSRF, the forced password change, each access rule (own data, own team, HR-only actions), the two-level approval workflow (routing, HR approving for an absent lead, rejections, cancelling, queues, history), Lab Head approval of HR staff (either approver is final, other HR users refused, creating HR staff, the renamed role), half-day leave, negative balances, comp-off, HR adjustments, the ledger adding up to the balance, the dashboard reports (totals, filters, comp-off vs adjustments, negative-balance dates, Team Lead scope), the Excel exports (each file is opened and its rows checked; HR only; download with the login cookie), and that every page renders for each role.
+Integration tests use a temporary SQLite file under `target/` and a fake mail sender (`RecordingMailSender`, so no real email is sent) and cover login (form and API, token cookie, Bearer tokens, altered tokens, logout and password changes cancelling tokens), CSRF, the forced password change, each access rule (own data, own team, HR-only actions), the two-level approval workflow (routing, HR approving for an absent lead, rejections, cancelling, queues, history), Lab Head approval of HR staff (either approver is final, other HR users refused, creating HR staff, the renamed role), half-day leave, negative balances, comp-off, HR adjustments, the ledger adding up to the balance, the dashboard reports (totals, filters, comp-off vs adjustments, negative-balance dates, Team Lead scope), the Excel exports (each file is opened and its rows checked; HR only; download with the login cookie), and that every page renders for each role.
 
 ## Known limitations
 - An approved comp-off credit cannot be cancelled directly; HR corrects it with a negative balance adjustment.
