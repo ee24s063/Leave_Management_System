@@ -36,6 +36,7 @@ A Spring Boot web application for managing employees, leave balances and leave r
 - Create employees with name, email, phone, department/team, designation, salary, joining date, **role** and **reporting lead** (`reporting_LeadId`).
 - The reporting lead must be an active employee with the Team Lead or HR role.
 - **HR staff** have two approvers instead: a **Lab Head** (required) and, optionally, a **Team Lead**. The Lab Head field (`headApproverId`) appears on the form when the role is HR. The second approver must be a Team Lead, not another HR user.
+- **No duplicate employees:** an employee cannot be created (or edited) with an email or phone number that another employee already has, including inactive, resigned and relieved ones. Emails are compared ignoring case; phone numbers on their last 10 digits, so `+91 98765 43210` and `9876543210` match. HR sees a warning naming the existing employee; an employee changing their own phone is only told it is taken. A phone number is only checked when it changes, so older duplicates can still be edited.
 - Edit details, change status (Active, Inactive, Resigned, Relieved), change role or reporting lead.
 - Search by name; optionally include inactive employees.
 
@@ -291,7 +292,7 @@ src/test/java/     Spring Boot + MockMvc tests: access rules, approval workflow,
 
 ## Testing
 ```bash
-mvn test                          # all 272 tests, about a minute
+mvn test                          # all 277 tests, about a minute
 mvn test -DexcludedGroups=ui      # without the browser tests
 mvn test -Dtest=UiTests           # only the browser tests
 ```
@@ -299,8 +300,8 @@ Three levels:
 
 | Level | Where | Tests |
 | --- | --- | --- |
-| Unit: one module at a time, no database (JUnit 5, Mockito) | `src/test/java/com/leavemanagement/{util,entity,security,service}` | 155 |
-| Integration: whole app through the REST API with a real database | `src/test/java/com/leavemanagement/*Tests.java` | 104 |
+| Unit: one module at a time, no database (JUnit 5, Mockito) | `src/test/java/com/leavemanagement/{util,entity,security,service}` | 159 |
+| Integration: whole app through the REST API with a real database | `src/test/java/com/leavemanagement/*Tests.java` | 105 |
 | UI: a real headless browser clicking through the pages as each role (Selenium) | `src/test/java/com/leavemanagement/ui/UiTests.java` | 13 |
 
 The UI tests use Microsoft Edge, or Google Chrome when Edge's driver cannot be downloaded; with neither available they are skipped. They save a screenshot per scenario to `target/ui-screenshots`.

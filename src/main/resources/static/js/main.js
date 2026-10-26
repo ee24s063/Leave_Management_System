@@ -64,7 +64,8 @@ async function apiCall(endpoint, method = 'GET', data = null) {
             } catch (ignored) {
                 if (response.status === 403) message = 'You do not have permission to do this';
             }
-            showAlert(message, 'danger');
+            // 409 Conflict (a duplicate, or a request that is no longer pending) is a warning, not an error
+            showAlert(message, response.status === 409 ? 'warning' : 'danger');
             return null;
         }
         const text = await response.text();

@@ -26,7 +26,7 @@ function showProfile(me) {
         ['Employee ID', e.employeeId],
         ['Name', e.fullName],
         ['Email (login)', e.email],
-        ['Phone', e.phone || '-'],
+        ['Mobile number', e.phone || '-'],
         ['Department / Team', e.department],
         ['Designation', e.designation],
         ['Reporting Lead', e.reportingLeadName || '-'],

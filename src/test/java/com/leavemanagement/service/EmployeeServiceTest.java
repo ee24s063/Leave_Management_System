@@ -121,11 +121,59 @@ class EmployeeServiceTest {
     }
 
     @Test
-    void duplicateEmailIsRefused() {
-        when(employees.existsByEmailIgnoreCase("asha@test.com")).thenReturn(true);
+    void duplicateEmailIsRefusedAndNamesTheExistingEmployee() {
+        when(employees.findFirstByEmailIgnoreCase("asha@test.com")).thenReturn(Optional.of(member));
         assertThatThrownBy(() -> service.createEmployee(create("asha@test.com", null)))
-                .isInstanceOf(IllegalStateException.class).hasMessageContaining("already exists");
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("An employee with this email already exists: E 3 (#3). Check the details, or edit the existing record instead.");
         verify(accounts, never()).save(any());
+    }
+
+    @Test
+    void emailOfALoginWithoutEmployeeRecordIsRefused() {
+        when(accounts.existsByUsernameIgnoreCase("admin@lms.local")).thenReturn(true);
+        assertThatThrownBy(() -> service.createEmployee(create("admin@lms.local", null)))
+                .hasMessageContaining("login account with this email already exists");
+    }
+
+    @Test
+    void duplicatePhoneIsRefusedWhateverTheFormat() {
+        member.setPhone("+91 98765 43210");
+        member.setStatus(EmployeeStatus.RESIGNED);
+        when(employees.findByPhoneIsNotNull()).thenReturn(List.of(member));
+        CreateEmployeeRequest samePhone = new CreateEmployeeRequest("Asha", "Rao", "asha@test.com", "98765-43210", "IT",
+                "Engineer", LocalDate.of(2025, 6, 1), 60000.0, null, Role.EMPLOYEE, null);
+        assertThatThrownBy(() -> service.createEmployee(samePhone))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("phone number already exists: E 3 (#3), resigned");
+        verify(employees, never()).save(any());
+    }
+
+    @Test
+    void phoneIsCheckedOnlyWhenItChanges() {
+        member.setPhone("9876543210");
+        Employee other = employee(4, null);
+        other.setPhone("9876543210"); // an existing duplicate from before this check
+        when(employees.findByPhoneIsNotNull()).thenReturn(List.of(member, other));
+        UpdateEmployeeRequest samePhone = new UpdateEmployeeRequest("Renamed", null, null, "+91 98765 43210",
+                null, null, null, null, null, null, null, null);
+        service.updateEmployee(MEMBER, samePhone);
+        assertThat(member.getFirstName()).isEqualTo("Renamed");
+
+        Employee third = employee(5, null);
+        UpdateEmployeeRequest takenPhone = new UpdateEmployeeRequest(null, null, null, "9876543210",
+                null, null, null, null, null, null, null, null);
+        assertThatThrownBy(() -> service.updateEmployee(5, takenPhone)).hasMessageContaining("phone number already exists");
+        assertThat(third.getPhone()).isNull();
+    }
+
+    @Test
+    void employeeIsNotToldWhoHasTheirNewPhone() {
+        member.setPhone("9876543210");
+        when(employees.findByPhoneIsNotNull()).thenReturn(List.of(member));
+        employee(4, null);
+        assertThatThrownBy(() -> service.updateOwnPhone(4, "+919876543210"))
+                .hasMessage("This phone number is already used by another employee.");
     }
 
     @Test
