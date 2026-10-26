@@ -50,3 +50,12 @@ to repeat them:
 | 14 | `make this pdf make some more simple` | Simplify for the reader | Plain-language rewrite, smaller tables | branch `docs/principles-and-practices` |
 | 15 | `JUnit 5, Mockito, AssertJ, Spring Boot Test, MockMvc, Selenium, headless Chrome/Edge. Do we have these dependencies` | Verify claims before submitting | Checked against the Maven dependency list: all present | - |
 | 16 | `ok, this document is fine. lets commit this to GitHub.` | Approve, then commit | Final PDF committed and pushed on the feature branch | branch `docs/principles-and-practices` |
+
+## Session 2026-10-15
+
+| # | Prompt (as written) | Principle | Outcome | Commit |
+| --- | --- | --- | --- | --- |
+| 1 | `If, I want to add some more leave types.....in which function the changes need to be made? Dont change anything now.....just show me where the changes will be made` | Understand before changing | Leave types are data, added by HR on the Leave Balance page; code locations listed for automatic balances; no code changed | - |
+| 2 | `make a A4 pdf for both pages and explain "how does this differ from your design?"` | Prepare the evaluation material | Two-page A4 handout: planned architecture from the Design Document, architecture as built, and the differences with reasons | - |
+| 3 | `When HR applies for leave, that particular HR should not approve his/her leave request` | Check the rule against the code | Already enforced (AccessPolicy and the HR queue filter); gaps noted; no code changed | - |
+| 4 | `Any employee should not apply for leave on same day multiple times . Add this restriction` | One scoped rule + tests | A new request may not cover a day already in a pending or approved request (morning and afternoon half-days excepted); 5 new tests, 250 passing | branch `feature/no-overlapping-leave` |

@@ -12,6 +12,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.Collection;
 import java.util.EnumSet;
 import java.util.List;
@@ -32,6 +33,7 @@ import java.util.Set;
 @Transactional
 public class LeaveRequestService {
     public static final Set<LeaveStatus> PENDING = EnumSet.of(LeaveStatus.PENDING_TL, LeaveStatus.PENDING_HR);
+    private static final DateTimeFormatter DISPLAY_DATE = DateTimeFormatter.ofPattern("d MMM yyyy");
 
     private final LeaveRequestRepository leaveRequestRepository;
     private final LeaveApprovalRepository leaveApprovalRepository;
@@ -44,6 +46,7 @@ public class LeaveRequestService {
      */
     public LeaveRequest submitLeaveRequest(LeaveRequest leaveRequest) {
         validateLeaveRequest(leaveRequest);
+        checkNoOverlap(leaveRequest);
         leaveRequest.setStatus(approvalSupport.initialStatus(leaveRequest.getEmployeeId()));
         leaveRequest.setRequestDate(LocalDate.now());
         return leaveRequestRepository.save(leaveRequest);
@@ -236,6 +239,29 @@ public class LeaveRequestService {
         }
         if (ValidationUtil.isEmpty(leaveRequest.getReason())) {
             throw new IllegalArgumentException("Reason for leave cannot be empty");
+        }
+    }
+
+    /**
+     * An employee may not apply twice for the same day: no day may already be covered by a pending or
+     * approved request. Rejected and cancelled requests do not count. The one exception is two half-days
+     * on the same date for different halves (morning and afternoon).
+     */
+    private void checkNoOverlap(LeaveRequest leaveRequest) {
+        List<LeaveRequest> existing = leaveRequestRepository.findOverlappingForEmployee(leaveRequest.getEmployeeId(),
+                leaveRequest.getStartDate(), leaveRequest.getEndDate(),
+                EnumSet.of(LeaveStatus.PENDING_TL, LeaveStatus.PENDING_HR, LeaveStatus.APPROVED));
+        for (LeaveRequest other : existing) {
+            boolean otherHalfOfTheDay = leaveRequest.getHalfDay() != null && other.getHalfDay() != null
+                    && leaveRequest.getHalfDay() != other.getHalfDay();
+            if (!otherHalfOfTheDay) {
+                String dates = other.getStartDate().equals(other.getEndDate())
+                        ? DISPLAY_DATE.format(other.getStartDate())
+                        : DISPLAY_DATE.format(other.getStartDate()) + " to " + DISPLAY_DATE.format(other.getEndDate());
+                throw new IllegalStateException("You have already applied for leave on " + dates
+                        + " (" + (other.getStatus() == LeaveStatus.APPROVED ? "approved" : "pending")
+                        + "). Choose other dates, or cancel that request first.");
+            }
         }
     }
 }

@@ -17,6 +17,8 @@ import org.springframework.security.access.AccessDeniedException;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.EnumSet;
+import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -113,6 +115,47 @@ class LeaveRequestServiceTest {
         assertThatThrownBy(() -> service.submitLeaveRequest(unknownType)).hasMessageContaining("leave type");
 
         verify(requests, never()).save(any());
+    }
+
+    @Test
+    void cannotApplyTwiceForTheSameDay() {
+        LeaveRequest earlier = newRequest(START, START.plusDays(2));
+        earlier.setStatus(LeaveStatus.PENDING_TL);
+        when(requests.findOverlappingForEmployee(eq(MEMBER), eq(START.plusDays(1)), eq(START.plusDays(1)), anyCollection()))
+                .thenReturn(List.of(earlier));
+
+        assertThatThrownBy(() -> service.submitLeaveRequest(newRequest(START.plusDays(1), START.plusDays(1))))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("already applied for leave")
+                .hasMessageContaining("(pending)");
+        verify(requests, never()).save(any());
+    }
+
+    @Test
+    void onlyPendingAndApprovedRequestsBlockTheDay() {
+        service.submitLeaveRequest(newRequest(START, START));
+        verify(requests).findOverlappingForEmployee(eq(MEMBER), eq(START), eq(START),
+                eq(EnumSet.of(LeaveStatus.PENDING_TL, LeaveStatus.PENDING_HR, LeaveStatus.APPROVED)));
+    }
+
+    @Test
+    void morningAndAfternoonOfTheSameDayMayBothBeTaken() {
+        LeaveRequest morning = newRequest(START, START);
+        morning.setHalfDay(HalfDay.FIRST_HALF);
+        morning.setStatus(LeaveStatus.APPROVED);
+        when(requests.findOverlappingForEmployee(eq(MEMBER), eq(START), eq(START), anyCollection()))
+                .thenReturn(List.of(morning));
+
+        LeaveRequest afternoon = newRequest(START, START);
+        afternoon.setHalfDay(HalfDay.SECOND_HALF);
+        service.submitLeaveRequest(afternoon);
+        verify(requests).save(afternoon);
+
+        LeaveRequest morningAgain = newRequest(START, START);
+        morningAgain.setHalfDay(HalfDay.FIRST_HALF);
+        assertThatThrownBy(() -> service.submitLeaveRequest(morningAgain)).hasMessageContaining("(approved)");
+        LeaveRequest fullDay = newRequest(START, START);
+        assertThatThrownBy(() -> service.submitLeaveRequest(fullDay)).hasMessageContaining("already applied");
     }
 
     // --- Approving ---

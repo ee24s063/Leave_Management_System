@@ -39,6 +39,7 @@ A Spring Boot web application for managing employees, leave balances and leave r
 
 ### Leave management
 - Employees apply for leave for themselves (leave type, dates, reason). Past dates are not allowed, and a request stays within one calendar year.
+- **No applying twice for the same day:** a new request may not cover a day that is already in one of the employee's pending or approved requests (rejected and cancelled requests don't count). The only exception is a morning half-day and an afternoon half-day on the same date.
 - **Half-day leave:** a single-day request can be for the first or second half of the day; it counts as 0.5 days.
 - **Two-level approval:** the employee's Team Lead approves first, then HR gives the final approval.
 
