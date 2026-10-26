@@ -1,6 +1,7 @@
 // Leave Requests JavaScript
 // Two-step approval: the Team Lead approves first, then HR gives final approval.
 // HR can also approve a request still waiting for the lead (when the lead is away); that completes both steps.
+// HR staff's own requests go to their Lab Head or chosen Team Lead instead; either one's approval is final.
 
 const VIEWS = {
     mine: { hint: 'Your own leave requests.' },
@@ -26,11 +27,16 @@ document.addEventListener('DOMContentLoaded', async function() {
         document.getElementById('leaveRequestForm').addEventListener('submit', submitLeaveRequest);
         ['startDate', 'endDate'].forEach(id => document.getElementById(id).addEventListener('change', updateHalfDayOption));
     }
-    document.getElementById('tab-team').hidden = me.role !== 'TEAM_LEAD';
+    document.getElementById('tab-team').hidden = !hasTeamQueue(me.role);
     document.getElementById('tab-hr').hidden = me.role !== 'HR_ADMIN';
+    if (me.role === 'LAB_HEAD') {
+        VIEWS.team.hint = `Requests from the HR staff you approve as ${ROLE_NAMES.LAB_HEAD}. Your approval is final.`;
+    } else if (me.role === 'TEAM_LEAD') {
+        VIEWS.team.hint += ` Requests from HR staff ("Waiting for ${ROLE_NAMES.LAB_HEAD} / Team Lead") are final when you approve them.`;
+    }
 
     // Start on the queue that needs this user's attention
-    const start = me.role === 'HR_ADMIN' ? 'hr' : me.role === 'TEAM_LEAD' ? 'team' : 'mine';
+    const start = me.role === 'HR_ADMIN' ? 'hr' : hasTeamQueue(me.role) ? 'team' : 'mine';
     showView(me.employee || start !== 'mine' ? start : 'all');
     refreshCounts();
 });
@@ -61,7 +67,7 @@ function reload() {
 
 // Number of requests waiting in the user's approval queue, shown on the tab
 async function refreshCounts() {
-    if (me.role === 'TEAM_LEAD') {
+    if (hasTeamQueue(me.role)) {
         const team = await apiCall('/leave-requests/pending/team');
         document.getElementById('count-team').textContent = team && team.length ? team.length : '';
     }
@@ -79,9 +85,7 @@ function isMine(req) {
 // (the server checks again: Team Leads only for their own reports)
 function canAct(req) {
     if (isMine(req)) return false;
-    if (me.role === 'HR_ADMIN') return req.status === 'PENDING_TL' || req.status === 'PENDING_HR';
-    if (me.role === 'TEAM_LEAD') return req.status === 'PENDING_TL';
-    return false;
+    return canApproveStatus(me.role, req.status);
 }
 
 function canCancel(req) {
@@ -95,6 +99,9 @@ function canCancel(req) {
 // Who acts next, shown under the status
 function nextStepNote(req) {
     if (req.status === 'PENDING_TL') return req.reportingLeadName ? `Lead: ${escapeHtml(req.reportingLeadName)}` : '';
+    if (req.status === 'PENDING_HEAD') {
+        return escapeHtml(ROLE_NAMES.LAB_HEAD) + (req.reportingLeadName ? ` or ${escapeHtml(req.reportingLeadName)}` : '');
+    }
     if (req.status === 'PENDING_HR') {
         const lead = (req.approvals || []).find(a => a.level === 'TEAM_LEAD' && a.action === 'APPROVED');
         return lead ? `Lead approved: ${escapeHtml(lead.approverName)}` : 'Sent straight to HR';
@@ -166,10 +173,7 @@ async function submitLeaveRequest(e) {
 
     const result = await apiCall('/leave-requests', 'POST', leaveRequestData);
     if (result) {
-        const next = result.status === 'PENDING_TL'
-            ? `sent to ${result.reportingLeadName || 'your Team Lead'} for approval`
-            : 'sent to HR for approval';
-        showAlert(`Leave request submitted and ${next}.`, 'success');
+        showAlert(`Leave request submitted and ${submittedTo(result)}.`, 'success');
         document.getElementById('leaveRequestForm').reset();
         updateHalfDayOption();
         if (currentView !== 'mine') showView('mine'); else reload();
@@ -179,13 +183,15 @@ async function submitLeaveRequest(e) {
 // Approve at the current step (the approver is the logged-in user)
 function approveRequest(requestId, status, balanceAfter) {
     let message = 'Approval comments (optional):';
-    if (me.role === 'HR_ADMIN' && status === 'PENDING_TL') {
+    if (status === 'PENDING_HEAD') {
+        message = 'Your approval is final: the days will be deducted from the balance.\n\nApproval comments (optional):';
+    } else if (me.role === 'HR_ADMIN' && status === 'PENDING_TL') {
         message = 'This request has not been approved by the Team Lead yet.\n'
             + 'Approving now completes both steps (Team Lead and HR).\n\nApproval comments (optional):';
     } else if (me.role === 'TEAM_LEAD') {
         message = 'After your approval the request goes to HR for final approval.\n\nApproval comments (optional):';
     }
-    const isFinal = me.role === 'HR_ADMIN';
+    const isFinal = me.role === 'HR_ADMIN' || status === 'PENDING_HEAD';
     if (isFinal && balanceAfter !== null && balanceAfter < 0) {
         message = `WARNING: this will take the employee's balance below zero (to ${formatDays(balanceAfter)} days).\n\n` + message;
     }

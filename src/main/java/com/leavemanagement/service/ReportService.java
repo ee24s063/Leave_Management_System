@@ -33,9 +33,11 @@ public class ReportService {
         BalanceTotals totals = leaveBalanceRepository.sumForYear(year);
         return new ReportSummary(year,
                 employeeRepository.countByStatus(EmployeeStatus.ACTIVE),
-                leaveRequestRepository.countByStatus(LeaveStatus.PENDING_TL),
+                leaveRequestRepository.countByStatus(LeaveStatus.PENDING_TL)
+                        + leaveRequestRepository.countByStatus(LeaveStatus.PENDING_HEAD),
                 leaveRequestRepository.countByStatus(LeaveStatus.PENDING_HR),
-                compOffRequestRepository.countByStatus(LeaveStatus.PENDING_TL),
+                compOffRequestRepository.countByStatus(LeaveStatus.PENDING_TL)
+                        + compOffRequestRepository.countByStatus(LeaveStatus.PENDING_HEAD),
                 compOffRequestRepository.countByStatus(LeaveStatus.PENDING_HR),
                 leaveBalanceRepository.countEmployeesWithNegativeBalance(year),
                 totals.allotted(), totals.used(), totals.remaining());
@@ -69,8 +71,11 @@ public class ReportService {
         if (teamIds.isEmpty()) {
             return new TeamReport(year, 0, 0, 0, List.of());
         }
+        // Includes HR staff in the team, whose requests this lead may approve directly (PENDING_HEAD)
         long waitingForMe = leaveRequestRepository.countByStatusAndEmployeeIdIn(LeaveStatus.PENDING_TL, teamIds)
-                + compOffRequestRepository.countByStatusAndEmployeeIdIn(LeaveStatus.PENDING_TL, teamIds);
+                + leaveRequestRepository.countByStatusAndEmployeeIdIn(LeaveStatus.PENDING_HEAD, teamIds)
+                + compOffRequestRepository.countByStatusAndEmployeeIdIn(LeaveStatus.PENDING_TL, teamIds)
+                + compOffRequestRepository.countByStatusAndEmployeeIdIn(LeaveStatus.PENDING_HEAD, teamIds);
         long waitingForHr = leaveRequestRepository.countByStatusAndEmployeeIdIn(LeaveStatus.PENDING_HR, teamIds)
                 + compOffRequestRepository.countByStatusAndEmployeeIdIn(LeaveStatus.PENDING_HR, teamIds);
         List<BalanceReportRow> rows = toRows(leaveBalanceRepository.findSnapshots(year, null, null, leadId));

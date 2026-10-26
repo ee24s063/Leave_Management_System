@@ -95,7 +95,8 @@ public class LeaveRequestController {
     }
 
     /**
-     * Team Lead queue: the lead's reports' requests waiting for Team Lead approval (HR: all of them)
+     * Team Lead / Lab Head queue: the lead's reports' requests waiting for Team Lead approval, then the HR staff
+     * requests this user may approve as their Lab Head or chosen Team Lead (HR: all requests waiting for a lead)
      */
     @GetMapping("/pending/team")
     public List<LeaveRequestView> getTeamQueue() {
@@ -104,8 +105,15 @@ public class LeaveRequestController {
         if (me.hasRole(Role.HR_ADMIN)) {
             return viewMapper.toViews(leaveRequestService.getRequestsByStatus(waitingForLead));
         }
-        List<Integer> team = me.getEmployeeId() == null ? List.of() : employeeRepository.findTeamMemberIds(me.getEmployeeId());
-        return viewMapper.toViews(leaveRequestService.getRequestsByStatusForEmployees(waitingForLead, team));
+        if (me.getEmployeeId() == null) {
+            return List.of();
+        }
+        List<Integer> team = employeeRepository.findTeamMemberIds(me.getEmployeeId());
+        List<Integer> hrStaff = new ArrayList<>(team);
+        hrStaff.addAll(employeeRepository.findIdsByHeadApproverId(me.getEmployeeId()));
+        List<LeaveRequest> queue = new ArrayList<>(leaveRequestService.getRequestsByStatusForEmployees(waitingForLead, team));
+        queue.addAll(leaveRequestService.getRequestsByStatusForEmployees(EnumSet.of(LeaveStatus.PENDING_HEAD), hrStaff));
+        return viewMapper.toViews(queue);
     }
 
     /**
@@ -207,6 +215,9 @@ public class LeaveRequestController {
             ids.add(me.getEmployeeId());
             if (me.hasRole(Role.TEAM_LEAD)) {
                 ids.addAll(employeeRepository.findTeamMemberIds(me.getEmployeeId()));
+            }
+            if (me.hasRole(Role.LAB_HEAD)) {
+                ids.addAll(employeeRepository.findIdsByHeadApproverId(me.getEmployeeId()));
             }
         }
         return ids;

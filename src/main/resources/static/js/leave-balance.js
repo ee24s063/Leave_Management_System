@@ -34,10 +34,10 @@ document.addEventListener('DOMContentLoaded', async function() {
     }
 });
 
-// Employees the user may view: self, plus the team for a lead, or everyone for HR
+// Employees the user may view: self, plus the team for a lead, the HR staff a Lab Head approves, or everyone for HR
 async function loadEmployeeOptions(me) {
     let employees = [];
-    if (me.role === 'HR_ADMIN' || me.role === 'TEAM_LEAD') {
+    if (me.role === 'HR_ADMIN' || me.role === 'TEAM_LEAD' || me.role === 'LAB_HEAD') {
         employees = (await apiCall('/employees')) || [];
     }
     if (me.employee && !employees.some(e => e.employeeId === me.employee.employeeId)) {

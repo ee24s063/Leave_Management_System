@@ -6,7 +6,7 @@ import com.leavemanagement.entity.Role;
 import java.time.LocalDate;
 
 /**
- * Employee as returned by the API, with role and reporting lead name. Salary is only filled in for HR.
+ * Employee as returned by the API, with role, reporting lead and (HR staff) Lab Head names. Salary is only filled in for HR.
  */
 public record EmployeeView(
         Integer employeeId,
@@ -22,9 +22,12 @@ public record EmployeeView(
         EmployeeStatus status,
         Integer reporting_LeadId,
         String reportingLeadName,
-        Role role) {
+        Role role,
+        Integer headApproverId,
+        String headApproverName) {
 
-    public static EmployeeView of(Employee e, Role role, String reportingLeadName, boolean includeSalary) {
+    public static EmployeeView of(Employee e, Role role, String reportingLeadName, String headApproverName,
+                                  boolean includeSalary) {
         return new EmployeeView(
                 e.getEmployeeId(),
                 e.getFirstName(),
@@ -39,6 +42,8 @@ public record EmployeeView(
                 e.getStatus(),
                 e.getReporting_LeadId(),
                 reportingLeadName,
-                role);
+                role,
+                e.getHeadApproverId(),
+                headApproverName);
     }
 }

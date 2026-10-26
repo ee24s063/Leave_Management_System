@@ -35,7 +35,7 @@
                     <li class="nav-item">
                         <span class="navbar-text ms-lg-3 me-2 small">
                             <span sec:authentication="name"></span>
-                            (<span sec:authorize="hasRole('HR_ADMIN')">HR</span><span sec:authorize="hasRole('TEAM_LEAD')">Team Lead</span><span sec:authorize="hasRole('EMPLOYEE')">Employee</span>)
+                            (<span sec:authorize="hasRole('HR_ADMIN')">HR</span><span sec:authorize="hasRole('TEAM_LEAD')">Team Lead</span><span sec:authorize="hasRole('EMPLOYEE')">Employee</span><span sec:authorize="hasRole('LAB_HEAD')" th:text="${roleNames != null ? roleNames['LAB_HEAD'] : 'Lab Head'}">Lab Head</span>)
                         </span>
                     </li>
                     <li class="nav-item">
@@ -54,6 +54,7 @@
 
     <th:block th:fragment="scripts">
         <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+        <script th:inline="javascript">window.SERVER_ROLE_NAMES = /*[[${roleNames}]]*/ null;</script>
         <script th:src="@{/js/main.js}"></script>
     </th:block>
 </body>

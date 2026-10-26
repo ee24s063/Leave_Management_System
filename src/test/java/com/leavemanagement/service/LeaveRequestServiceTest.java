@@ -135,7 +135,7 @@ class LeaveRequestServiceTest {
     void onlyPendingAndApprovedRequestsBlockTheDay() {
         service.submitLeaveRequest(newRequest(START, START));
         verify(requests).findOverlappingForEmployee(eq(MEMBER), eq(START), eq(START),
-                eq(EnumSet.of(LeaveStatus.PENDING_TL, LeaveStatus.PENDING_HR, LeaveStatus.APPROVED)));
+                eq(EnumSet.of(LeaveStatus.PENDING_TL, LeaveStatus.PENDING_HR, LeaveStatus.PENDING_HEAD, LeaveStatus.APPROVED)));
     }
 
     @Test
@@ -175,6 +175,36 @@ class LeaveRequestServiceTest {
         LeaveRequest r = service.approveLeaveRequest(REQUEST, hr, null);
         assertThat(r.getStatus()).isEqualTo(LeaveStatus.APPROVED);
         verify(leaveService).deductLeave(MEMBER, CASUAL, new BigDecimal("2"), START.getYear(), REQUEST);
+    }
+
+    @Test
+    void labHeadGivesTheFinalApprovalForHrStaff() {
+        AppUserDetails head = user(5, Role.LAB_HEAD);
+        stored(LeaveStatus.PENDING_HEAD, START, START.plusDays(1));
+        when(approvalSupport.headStepLevel(head, MEMBER)).thenReturn(ApprovalLevel.LAB_HEAD);
+        LeaveRequest r = service.approveLeaveRequest(REQUEST, head, "Enjoy");
+        assertThat(r.getStatus()).isEqualTo(LeaveStatus.APPROVED);
+        verify(approvalSupport).record(RequestType.LEAVE, REQUEST, ApprovalLevel.LAB_HEAD, ApprovalAction.APPROVED, head, "Enjoy", false);
+        verify(leaveService).deductLeave(MEMBER, CASUAL, new BigDecimal("2"), START.getYear(), REQUEST);
+    }
+
+    @Test
+    void chosenTeamLeadMayGiveTheFinalApprovalForHrStaffInstead() {
+        stored(LeaveStatus.PENDING_HEAD, START, START);
+        when(approvalSupport.headStepLevel(lead, MEMBER)).thenReturn(ApprovalLevel.TEAM_LEAD);
+        assertThat(service.approveLeaveRequest(REQUEST, lead, null).getStatus()).isEqualTo(LeaveStatus.APPROVED);
+        verify(approvalSupport).record(RequestType.LEAVE, REQUEST, ApprovalLevel.TEAM_LEAD, ApprovalAction.APPROVED, lead, null, false);
+        verify(leaveService).deductLeave(eq(MEMBER), eq(CASUAL), any(), anyInt(), eq(REQUEST));
+    }
+
+    @Test
+    void labHeadRejectionIsRecordedAtTheLabHeadStep() {
+        AppUserDetails head = user(5, Role.LAB_HEAD);
+        stored(LeaveStatus.PENDING_HEAD, START, START);
+        when(approvalSupport.headStepLevel(head, MEMBER)).thenReturn(ApprovalLevel.LAB_HEAD);
+        assertThat(service.rejectLeaveRequest(REQUEST, head, "Audit week").getStatus()).isEqualTo(LeaveStatus.REJECTED);
+        verify(approvalSupport).record(RequestType.LEAVE, REQUEST, ApprovalLevel.LAB_HEAD, ApprovalAction.REJECTED, head, "Audit week", false);
+        verifyNoInteractions(leaveService);
     }
 
     @Test

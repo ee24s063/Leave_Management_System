@@ -58,4 +58,14 @@ to repeat them:
 | 1 | `If, I want to add some more leave types.....in which function the changes need to be made? Dont change anything now.....just show me where the changes will be made` | Understand before changing | Leave types are data, added by HR on the Leave Balance page; code locations listed for automatic balances; no code changed | - |
 | 2 | `make a A4 pdf for both pages and explain "how does this differ from your design?"` | Prepare the evaluation material | Two-page A4 handout: planned architecture from the Design Document, architecture as built, and the differences with reasons | - |
 | 3 | `When HR applies for leave, that particular HR should not approve his/her leave request` | Check the rule against the code | Already enforced (AccessPolicy and the HR queue filter); gaps noted; no code changed | - |
-| 4 | `Any employee should not apply for leave on same day multiple times . Add this restriction` | One scoped rule + tests | A new request may not cover a day already in a pending or approved request (morning and afternoon half-days excepted); 5 new tests, 250 passing | branch `feature/no-overlapping-leave` |
+| 4 | `Any employee should not apply for leave on same day multiple times . Add this restriction` | One scoped rule + tests | A new request may not cover a day already in a pending or approved request (morning and afternoon half-days excepted); 5 new tests, 250 passing | d103372 (PR #3) |
+
+## Session 2026-10-26
+
+| # | Prompt (as written) | Principle | Outcome | Commit |
+| --- | --- | --- | --- | --- |
+| 1 | `we'll first commit and push same day twice rule.` | Approve, then commit | Rule committed and pushed; merged as PR #3 | d103372 |
+| 2 | `want this to be stricter, one request per day is enough.` | Tighten a rule after review | Stricter rule prepared and kept aside (not committed yet, by our choice) | - |
+| 3 | `There is a head for the lab. The HR's leave request will go to that head nad also if needed it will also go to any one of the team lead. So, while creating employee details add two level of approval for HR also.` | Clarify decisions before building (order, role, who else may approve) | New LAB_HEAD role with a configurable name; HR staff get a Lab Head (required) and an optional Team Lead on their record; their leave and comp-off go to both and either approval is final; other HR users can no longer approve them; migration V5; 22 new tests, 272 passing | branch `feature/lab-head-approval` |
+| 4 | `For all the employees there will be 2 level of approval"one is team lead and the other is HR". Only for HR there will be Lab head and a team lead. Is this correctly changed?` / `A is fine for HR.` | Verify the build against the intent | Confirmed: employees keep Team Lead then HR; HR staff go to Lab Head or Team Lead, either one final | - |
+| 5 | `we'll commit these changes. create pull request and give the discription to be pasted` | Commit after review; PR for teammate review | Lab Head approval committed and pushed for a pull request | branch `feature/lab-head-approval` |

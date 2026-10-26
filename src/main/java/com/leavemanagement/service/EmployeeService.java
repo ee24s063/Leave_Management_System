@@ -1,5 +1,6 @@
 package com.leavemanagement.service;
 
+import com.leavemanagement.config.RoleNames;
 import com.leavemanagement.dto.CreateEmployeeRequest;
 import com.leavemanagement.dto.CreatedEmployeeResponse;
 import com.leavemanagement.dto.EmployeeView;
@@ -23,6 +24,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * Service class for managing employee records and their login accounts
@@ -34,6 +36,7 @@ public class EmployeeService {
     private final EmployeeRepository employeeRepository;
     private final UserAccountRepository userAccountRepository;
     private final PasswordEncoder passwordEncoder;
+    private final RoleNames roleNames;
 
     /**
      * Create an employee and their login account (username = email) with a temporary password
@@ -44,7 +47,13 @@ public class EmployeeService {
             throw new IllegalStateException("An employee or account with this email already exists");
         }
         if (req.reporting_LeadId() != null) {
-            validateReportingLead(req.reporting_LeadId(), null);
+            validateReportingLead(req.reporting_LeadId(), null, req.role());
+        }
+        if (req.role() == Role.HR_ADMIN) {
+            requireHeadApprover(req.headApproverId());
+            validateHeadApprover(req.headApproverId(), null);
+        } else if (req.headApproverId() != null) {
+            throw new IllegalArgumentException("Only HR staff have a " + roleNames.labHead() + " approver");
         }
 
         Employee employee = new Employee();
@@ -58,6 +67,7 @@ public class EmployeeService {
         employee.setSalary(req.salary());
         employee.setStatus(EmployeeStatus.ACTIVE);
         employee.setReporting_LeadId(req.reporting_LeadId());
+        employee.setHeadApproverId(req.role() == Role.HR_ADMIN ? req.headApproverId() : null);
         employee = employeeRepository.save(employee);
 
         String temporaryPassword = PasswordGenerator.generate();
@@ -98,11 +108,30 @@ public class EmployeeService {
             if (account != null) account.setUsername(email);
         }
 
+        boolean roleChanges = account != null && req.role() != null && req.role() != account.getRole();
+        Role newRole = roleChanges ? req.role() : account == null ? null : account.getRole();
+
         if (Boolean.TRUE.equals(req.clearReportingLead())) {
             employee.setReporting_LeadId(null);
         } else if (req.reporting_LeadId() != null) {
-            validateReportingLead(req.reporting_LeadId(), employeeId);
+            validateReportingLead(req.reporting_LeadId(), employeeId, newRole);
             employee.setReporting_LeadId(req.reporting_LeadId());
+        } else if (roleChanges && employee.getReporting_LeadId() != null) {
+            validateReportingLead(employee.getReporting_LeadId(), employeeId, newRole);
+        }
+
+        // HR staff always have a Lab Head approver; nobody else has one
+        if (newRole == Role.HR_ADMIN) {
+            if (req.headApproverId() != null) {
+                validateHeadApprover(req.headApproverId(), employeeId);
+                employee.setHeadApproverId(req.headApproverId());
+            }
+            requireHeadApprover(employee.getHeadApproverId());
+        } else {
+            if (req.headApproverId() != null) {
+                throw new IllegalArgumentException("Only HR staff have a " + roleNames.labHead() + " approver");
+            }
+            employee.setHeadApproverId(null);
         }
 
         if (req.status() != null) {
@@ -114,6 +143,10 @@ public class EmployeeService {
             if (account.getRole() == Role.TEAM_LEAD && req.role() == Role.EMPLOYEE
                     && !employeeRepository.findTeamMemberIds(employeeId).isEmpty()) {
                 throw new IllegalStateException("Reassign this lead's team members before changing their role");
+            }
+            if (account.getRole() == Role.LAB_HEAD && !employeeRepository.findIdsByHeadApproverId(employeeId).isEmpty()) {
+                throw new IllegalStateException("Choose another " + roleNames.labHead()
+                        + " for the HR staff this person approves before changing their role");
             }
             account.setRole(req.role());
         }
@@ -196,6 +229,13 @@ public class EmployeeService {
     }
 
     /**
+     * Get the HR staff whose leave a Lab Head approves
+     */
+    public List<Employee> getStaffApprovedBy(Integer headId) {
+        return headId == null ? List.of() : employeeRepository.findByHeadApproverIdOrderByFirstNameAscLastNameAsc(headId);
+    }
+
+    /**
      * Get employees by department
      */
     public List<Employee> getEmployeesByDepartment(String department) {
@@ -221,29 +261,33 @@ public class EmployeeService {
     }
 
     /**
-     * Add role and reporting lead name to employees, loading accounts and leads in bulk
+     * Add role, reporting lead and Lab Head names to employees, loading accounts and approvers in bulk
      */
     public List<EmployeeView> toViews(List<Employee> employees, boolean includeSalary) {
         List<Integer> ids = employees.stream().map(Employee::getEmployeeId).toList();
         Map<Integer, Role> roles = userAccountRepository.findByEmployeeIdIn(ids).stream()
                 .collect(Collectors.toMap(UserAccount::getEmployeeId, UserAccount::getRole));
-        List<Integer> leadIds = employees.stream().map(Employee::getReporting_LeadId)
+        List<Integer> approverIds = employees.stream()
+                .flatMap(e -> Stream.of(e.getReporting_LeadId(), e.getHeadApproverId()))
                 .filter(Objects::nonNull).distinct().toList();
-        Map<Integer, Employee> leads = employeeRepository.findAllById(leadIds).stream()
+        Map<Integer, Employee> approvers = employeeRepository.findAllById(approverIds).stream()
                 .collect(Collectors.toMap(Employee::getEmployeeId, Function.identity()));
         return employees.stream()
-                .map(e -> {
-                    Employee lead = e.getReporting_LeadId() == null ? null : leads.get(e.getReporting_LeadId());
-                    return EmployeeView.of(e, roles.get(e.getEmployeeId()),
-                            lead == null ? null : lead.getFullName(), includeSalary);
-                })
+                .map(e -> EmployeeView.of(e, roles.get(e.getEmployeeId()),
+                        nameOf(approvers, e.getReporting_LeadId()), nameOf(approvers, e.getHeadApproverId()), includeSalary))
                 .toList();
     }
 
+    private static String nameOf(Map<Integer, Employee> employees, Integer id) {
+        Employee e = id == null ? null : employees.get(id);
+        return e == null ? null : e.getFullName();
+    }
+
     /**
-     * A reporting lead must be an active employee with the TEAM_LEAD or HR_ADMIN role, and not the employee themselves
+     * A reporting lead must be an active employee with the TEAM_LEAD or HR_ADMIN role, and not the employee themselves.
+     * For HR staff it must be a Team Lead, since other HR users do not approve an HR colleague's leave.
      */
-    private void validateReportingLead(Integer leadId, Integer employeeId) {
+    private void validateReportingLead(Integer leadId, Integer employeeId, Role employeeRole) {
         if (leadId.equals(employeeId)) {
             throw new IllegalArgumentException("An employee cannot be their own reporting lead");
         }
@@ -255,6 +299,34 @@ public class EmployeeService {
         Role leadRole = userAccountRepository.findByEmployeeId(leadId).map(UserAccount::getRole).orElse(null);
         if (leadRole != Role.TEAM_LEAD && leadRole != Role.HR_ADMIN) {
             throw new IllegalArgumentException("Reporting lead must have the Team Lead or HR role");
+        }
+        if (employeeRole == Role.HR_ADMIN && leadRole != Role.TEAM_LEAD) {
+            throw new IllegalArgumentException("For HR staff, the second approver must be a Team Lead");
+        }
+    }
+
+    private void requireHeadApprover(Integer headId) {
+        if (headId == null) {
+            throw new IllegalArgumentException("Choose the " + roleNames.labHead() + " who approves this HR employee's leave");
+        }
+    }
+
+    /**
+     * The Lab Head approver must be an active employee with the LAB_HEAD role, and not the employee themselves
+     */
+    private void validateHeadApprover(Integer headId, Integer employeeId) {
+        String head = roleNames.labHead();
+        if (headId.equals(employeeId)) {
+            throw new IllegalArgumentException("An employee cannot be their own " + head);
+        }
+        Employee approver = employeeRepository.findById(headId)
+                .orElseThrow(() -> new IllegalArgumentException(head + " not found"));
+        if (approver.getStatus() != EmployeeStatus.ACTIVE) {
+            throw new IllegalArgumentException("The " + head + " is not an active employee");
+        }
+        Role role = userAccountRepository.findByEmployeeId(headId).map(UserAccount::getRole).orElse(null);
+        if (role != Role.LAB_HEAD) {
+            throw new IllegalArgumentException("The chosen approver must have the " + head + " role");
         }
     }
 

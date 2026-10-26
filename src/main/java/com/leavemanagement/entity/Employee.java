@@ -51,6 +51,10 @@ public class Employee {
     @Column(name = "reporting_lead_id")
     private Integer reporting_LeadId;
 
+    // HR staff only: employeeId of the Lab Head who approves this employee's leave (the Team Lead above may too)
+    @Column(name = "head_approver_id")
+    private Integer headApproverId;
+
     public String getFullName() {
         return firstName + " " + lastName;
     }
@@ -66,6 +70,7 @@ public class Employee {
                 ", designation='" + designation + '\'' +
                 ", status=" + status +
                 ", reporting_LeadId=" + reporting_LeadId +
+                ", headApproverId=" + headApproverId +
                 '}';
     }
 }

@@ -32,7 +32,7 @@ import java.util.Set;
 @RequiredArgsConstructor
 @Transactional
 public class LeaveRequestService {
-    public static final Set<LeaveStatus> PENDING = EnumSet.of(LeaveStatus.PENDING_TL, LeaveStatus.PENDING_HR);
+    public static final Set<LeaveStatus> PENDING = EnumSet.of(LeaveStatus.PENDING_TL, LeaveStatus.PENDING_HR, LeaveStatus.PENDING_HEAD);
     private static final DateTimeFormatter DISPLAY_DATE = DateTimeFormatter.ofPattern("d MMM yyyy");
 
     private final LeaveRequestRepository leaveRequestRepository;
@@ -42,7 +42,7 @@ public class LeaveRequestService {
     private final ApprovalSupport approvalSupport;
 
     /**
-     * Submit a new leave request; it is routed to the Team Lead or straight to HR
+     * Submit a new leave request; it is routed to the Team Lead, straight to HR, or (HR staff) to the Lab Head
      */
     public LeaveRequest submitLeaveRequest(LeaveRequest leaveRequest) {
         validateLeaveRequest(leaveRequest);
@@ -57,6 +57,7 @@ public class LeaveRequestService {
      * - Waiting for Team Lead, acted on by the Team Lead: moves on to HR.
      * - Waiting for Team Lead, acted on by HR (lead away): one approval completes both steps.
      * - Waiting for HR, acted on by HR: final approval; days are deducted.
+     * - An HR employee's request (waiting for the Lab Head): the Lab Head or the chosen Team Lead gives final approval.
      */
     public LeaveRequest approveLeaveRequest(Integer leaveRequestId, AppUserDetails actor, String comments) {
         LeaveRequest request = findRequest(leaveRequestId);
@@ -83,6 +84,12 @@ public class LeaveRequestService {
                 approvalSupport.record(RequestType.LEAVE, id, ApprovalLevel.HR, ApprovalAction.APPROVED, actor, comments, false);
                 finalApprove(request);
             }
+            case PENDING_HEAD -> {
+                // HR staff: the Lab Head or the chosen Team Lead gives the final approval (AccessPolicy checked who)
+                approvalSupport.record(RequestType.LEAVE, id, approvalSupport.headStepLevel(actor, request.getEmployeeId()),
+                        ApprovalAction.APPROVED, actor, comments, false);
+                finalApprove(request);
+            }
             default -> throw new IllegalStateException("This request is no longer pending (" + request.getStatus() + ")");
         }
         return leaveRequestRepository.save(request);
@@ -104,8 +111,10 @@ public class LeaveRequestService {
         if (!request.getStatus().isPending()) {
             throw new IllegalStateException("This request is no longer pending (" + request.getStatus() + ")");
         }
-        approvalSupport.record(RequestType.LEAVE, request.getLeaveRequestId(),
-                isHr ? ApprovalLevel.HR : ApprovalLevel.TEAM_LEAD, ApprovalAction.REJECTED, actor, comments, false);
+        ApprovalLevel level = request.getStatus() == LeaveStatus.PENDING_HEAD
+                ? approvalSupport.headStepLevel(actor, request.getEmployeeId())
+                : isHr ? ApprovalLevel.HR : ApprovalLevel.TEAM_LEAD;
+        approvalSupport.record(RequestType.LEAVE, request.getLeaveRequestId(), level, ApprovalAction.REJECTED, actor, comments, false);
         request.setStatus(LeaveStatus.REJECTED);
         return leaveRequestRepository.save(request);
     }
@@ -250,7 +259,7 @@ public class LeaveRequestService {
     private void checkNoOverlap(LeaveRequest leaveRequest) {
         List<LeaveRequest> existing = leaveRequestRepository.findOverlappingForEmployee(leaveRequest.getEmployeeId(),
                 leaveRequest.getStartDate(), leaveRequest.getEndDate(),
-                EnumSet.of(LeaveStatus.PENDING_TL, LeaveStatus.PENDING_HR, LeaveStatus.APPROVED));
+                EnumSet.of(LeaveStatus.PENDING_TL, LeaveStatus.PENDING_HR, LeaveStatus.PENDING_HEAD, LeaveStatus.APPROVED));
         for (LeaveRequest other : existing) {
             boolean otherHalfOfTheDay = leaveRequest.getHalfDay() != null && other.getHalfDay() != null
                     && leaveRequest.getHalfDay() != other.getHalfDay();

@@ -1,9 +1,11 @@
 package com.leavemanagement.security;
 
+import com.leavemanagement.config.RoleNames;
 import com.leavemanagement.entity.Employee;
 import com.leavemanagement.entity.Role;
 import com.leavemanagement.entity.UserAccount;
 import com.leavemanagement.repository.EmployeeRepository;
+import com.leavemanagement.repository.UserAccountRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.access.AccessDeniedException;
@@ -17,19 +19,29 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 /**
- * Who may see or act on which employee: HR everyone, a Team Lead their reports, an employee themselves
+ * Who may see or act on which employee: HR everyone, a Team Lead their reports, an employee themselves.
+ * HR staff's requests: only their Lab Head or their chosen Team Lead, never another HR user.
  */
 class AccessPolicyTest {
-    // Employee IDs: 1 = HR, 2 = lead, 3 = lead's report, 4 = someone else
+    // Employee IDs: 1 = HR, 2 = lead, 3 = lead's report, 4 = someone else,
+    // 5 = Lab Head, 6 = HR staff approved by Lab Head 5 with Team Lead 2
     private final CurrentUser currentUser = mock(CurrentUser.class);
     private final EmployeeRepository employees = mock(EmployeeRepository.class);
-    private final AccessPolicy policy = new AccessPolicy(currentUser, employees);
+    private final UserAccountRepository accounts = mock(UserAccountRepository.class);
+    private final AccessPolicy policy = new AccessPolicy(currentUser, employees, accounts, new RoleNames("Lab Head"));
 
     @BeforeEach
     void setUp() {
         when(employees.findById(3)).thenReturn(Optional.of(employee(3, 2)));
         when(employees.findById(4)).thenReturn(Optional.of(employee(4, null)));
         when(employees.findById(2)).thenReturn(Optional.of(employee(2, null)));
+        Employee hrStaff = employee(6, 2);
+        hrStaff.setHeadApproverId(5);
+        when(employees.findById(6)).thenReturn(Optional.of(hrStaff));
+        UserAccount hrAccount = new UserAccount();
+        hrAccount.setRole(Role.HR_ADMIN);
+        hrAccount.setEmployeeId(6);
+        when(accounts.findByEmployeeId(6)).thenReturn(Optional.of(hrAccount));
     }
 
     static Employee employee(int id, Integer leadId) {
@@ -109,5 +121,35 @@ class AccessPolicyTest {
     void employeeApprovesNobody() {
         loggedInAs(4, Role.EMPLOYEE);
         assertThatThrownBy(() -> policy.checkCanApprove(3)).isInstanceOf(AccessDeniedException.class);
+    }
+
+    @Test
+    void otherHrCannotApproveAnHrColleague() {
+        loggedInAs(1, Role.HR_ADMIN);
+        assertThatThrownBy(() -> policy.checkCanApprove(6))
+                .isInstanceOf(AccessDeniedException.class).hasMessageContaining("Lab Head");
+    }
+
+    @Test
+    void labHeadOrChosenTeamLeadApprovesHrStaff() {
+        loggedInAs(5, Role.LAB_HEAD);
+        assertThatCode(() -> policy.checkCanApprove(6)).doesNotThrowAnyException();
+        loggedInAs(2, Role.TEAM_LEAD);
+        assertThatCode(() -> policy.checkCanApprove(6)).doesNotThrowAnyException();
+    }
+
+    @Test
+    void labHeadApprovesOnlyTheHrStaffTheyHead() {
+        loggedInAs(5, Role.LAB_HEAD);
+        assertThatThrownBy(() -> policy.checkCanApprove(3)).isInstanceOf(AccessDeniedException.class);
+        assertThatThrownBy(() -> policy.checkCanApprove(4)).isInstanceOf(AccessDeniedException.class);
+    }
+
+    @Test
+    void labHeadSeesThemselvesAndTheHrStaffTheyHead() {
+        loggedInAs(5, Role.LAB_HEAD);
+        assertThat(policy.canView(5)).isTrue();
+        assertThat(policy.canView(6)).isTrue();
+        assertThat(policy.canView(3)).isFalse();
     }
 }

@@ -76,10 +76,19 @@
                                         <option value="EMPLOYEE">Employee</option>
                                         <option value="TEAM_LEAD">Team Lead</option>
                                         <option value="HR_ADMIN">HR / Admin</option>
+                                        <option value="LAB_HEAD" th:text="${roleNames['LAB_HEAD']}">Lab Head</option>
+                                    </select>
+                                </div>
+                                <!-- HR staff: their leave goes to the Lab Head and, optionally, a Team Lead; either one approves -->
+                                <div class="col-md-6 mb-3" id="headApproverGroup" hidden>
+                                    <label for="headApprover" class="form-label"
+                                           th:text="|${roleNames['LAB_HEAD']} (approves this HR employee's leave)|">Lab Head</label>
+                                    <select class="form-select" id="headApprover">
+                                        <option value="">Choose...</option>
                                     </select>
                                 </div>
                                 <div class="col-md-6 mb-3">
-                                    <label for="reportingLead" class="form-label">Reporting Lead</label>
+                                    <label for="reportingLead" class="form-label" id="reportingLeadLabel">Reporting Lead</label>
                                     <select class="form-select" id="reportingLead">
                                         <option value="">None</option>
                                     </select>
@@ -140,7 +149,7 @@
                                         <th>Department</th>
                                         <th>Designation</th>
                                         <th>Role</th>
-                                        <th>Reporting Lead</th>
+                                        <th>Reporting Lead / Approvers</th>
                                         <th>Status</th>
                                         <th>Actions</th>
                                     </tr>

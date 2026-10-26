@@ -32,6 +32,12 @@ public interface EmployeeRepository extends JpaRepository<Employee, Integer> {
     @Query("SELECT e.employeeId FROM Employee e WHERE e.reporting_LeadId = :leadId")
     List<Integer> findTeamMemberIds(@Param("leadId") Integer leadId);
 
+    // HR staff whose leave the given Lab Head approves
+    List<Employee> findByHeadApproverIdOrderByFirstNameAscLastNameAsc(Integer headApproverId);
+
+    @Query("SELECT e.employeeId FROM Employee e WHERE e.headApproverId = :headId")
+    List<Integer> findIdsByHeadApproverId(@Param("headId") Integer headId);
+
     long countByStatus(EmployeeStatus status);
 
     @Query("SELECT DISTINCT e.department FROM Employee e ORDER BY e.department")

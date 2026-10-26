@@ -35,6 +35,7 @@ import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
 public class SecurityConfig {
     private static final String HR = "HR_ADMIN";
     private static final String LEAD = "TEAM_LEAD";
+    private static final String HEAD = "LAB_HEAD";
 
     @Bean
     public PasswordEncoder passwordEncoder() {
@@ -90,15 +91,16 @@ public class SecurityConfig {
                 // Leave balances: HR sets up and resets
                 .requestMatchers(HttpMethod.POST, "/api/leave-balance/**").hasRole(HR)
 
-                // Leave requests: approvals by Team Leads and HR; organisation-wide queries by HR
-                .requestMatchers("/api/leave-requests/*/approve", "/api/leave-requests/*/reject").hasAnyRole(LEAD, HR)
-                .requestMatchers("/api/leave-requests/pending/team").hasAnyRole(LEAD, HR)
+                // Leave requests: approvals by Team Leads and HR (HR staff's by their Lab Head or Team Lead);
+                // organisation-wide queries by HR
+                .requestMatchers("/api/leave-requests/*/approve", "/api/leave-requests/*/reject").hasAnyRole(LEAD, HR, HEAD)
+                .requestMatchers("/api/leave-requests/pending/team").hasAnyRole(LEAD, HR, HEAD)
                 .requestMatchers("/api/leave-requests/pending/hr").hasRole(HR)
                 .requestMatchers("/api/leave-requests/department/**", "/api/leave-requests/date-range").hasRole(HR)
 
                 // Comp-off requests: same two-step approval as leave
-                .requestMatchers("/api/comp-off/*/approve", "/api/comp-off/*/reject").hasAnyRole(LEAD, HR)
-                .requestMatchers("/api/comp-off/pending/team").hasAnyRole(LEAD, HR)
+                .requestMatchers("/api/comp-off/*/approve", "/api/comp-off/*/reject").hasAnyRole(LEAD, HR, HEAD)
+                .requestMatchers("/api/comp-off/pending/team").hasAnyRole(LEAD, HR, HEAD)
                 .requestMatchers("/api/comp-off/pending/hr").hasRole(HR)
 
                 .anyRequest().authenticated())
