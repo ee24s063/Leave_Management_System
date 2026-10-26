@@ -139,7 +139,7 @@ class LeaveRequestServiceTest {
     }
 
     @Test
-    void morningAndAfternoonOfTheSameDayMayBothBeTaken() {
+    void oneRequestPerDayEvenForHalfDays() {
         LeaveRequest morning = newRequest(START, START);
         morning.setHalfDay(HalfDay.FIRST_HALF);
         morning.setStatus(LeaveStatus.APPROVED);
@@ -148,14 +148,10 @@ class LeaveRequestServiceTest {
 
         LeaveRequest afternoon = newRequest(START, START);
         afternoon.setHalfDay(HalfDay.SECOND_HALF);
-        service.submitLeaveRequest(afternoon);
-        verify(requests).save(afternoon);
-
-        LeaveRequest morningAgain = newRequest(START, START);
-        morningAgain.setHalfDay(HalfDay.FIRST_HALF);
-        assertThatThrownBy(() -> service.submitLeaveRequest(morningAgain)).hasMessageContaining("(approved)");
+        assertThatThrownBy(() -> service.submitLeaveRequest(afternoon)).hasMessageContaining("(approved)");
         LeaveRequest fullDay = newRequest(START, START);
         assertThatThrownBy(() -> service.submitLeaveRequest(fullDay)).hasMessageContaining("already applied");
+        verify(requests, never()).save(any());
     }
 
     // --- Approving ---

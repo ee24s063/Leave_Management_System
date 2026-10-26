@@ -253,24 +253,22 @@ public class LeaveRequestService {
 
     /**
      * An employee may not apply twice for the same day: no day may already be covered by a pending or
-     * approved request. Rejected and cancelled requests do not count. The one exception is two half-days
-     * on the same date for different halves (morning and afternoon).
+     * approved request. Rejected and cancelled requests do not count. Half-days count as the whole day,
+     * so one request per day (a morning and an afternoon half-day need two days).
      */
     private void checkNoOverlap(LeaveRequest leaveRequest) {
         List<LeaveRequest> existing = leaveRequestRepository.findOverlappingForEmployee(leaveRequest.getEmployeeId(),
                 leaveRequest.getStartDate(), leaveRequest.getEndDate(),
                 EnumSet.of(LeaveStatus.PENDING_TL, LeaveStatus.PENDING_HR, LeaveStatus.PENDING_HEAD, LeaveStatus.APPROVED));
-        for (LeaveRequest other : existing) {
-            boolean otherHalfOfTheDay = leaveRequest.getHalfDay() != null && other.getHalfDay() != null
-                    && leaveRequest.getHalfDay() != other.getHalfDay();
-            if (!otherHalfOfTheDay) {
-                String dates = other.getStartDate().equals(other.getEndDate())
-                        ? DISPLAY_DATE.format(other.getStartDate())
-                        : DISPLAY_DATE.format(other.getStartDate()) + " to " + DISPLAY_DATE.format(other.getEndDate());
-                throw new IllegalStateException("You have already applied for leave on " + dates
-                        + " (" + (other.getStatus() == LeaveStatus.APPROVED ? "approved" : "pending")
-                        + "). Choose other dates, or cancel that request first.");
-            }
+        if (existing.isEmpty()) {
+            return;
         }
+        LeaveRequest other = existing.get(0);
+        String dates = other.getStartDate().equals(other.getEndDate())
+                ? DISPLAY_DATE.format(other.getStartDate())
+                : DISPLAY_DATE.format(other.getStartDate()) + " to " + DISPLAY_DATE.format(other.getEndDate());
+        throw new IllegalStateException("You have already applied for leave on " + dates
+                + " (" + (other.getStatus() == LeaveStatus.APPROVED ? "approved" : "pending")
+                + "). Choose other dates, or cancel that request first.");
     }
 }
