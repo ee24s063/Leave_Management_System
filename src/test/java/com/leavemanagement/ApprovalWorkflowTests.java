@@ -20,6 +20,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.hasSize;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
@@ -228,15 +229,37 @@ class ApprovalWorkflowTests {
                 .andExpect(status().isForbidden());
     }
 
+    // --- Same day twice ---
+
+    @Test
+    void cannotApplyTwiceForTheSameDayUntilTheFirstIsCancelled() throws Exception {
+        int first = submit(memberAccount, 3);
+        applyFor(memberAccount, start.plusDays(2), start.plusDays(4))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message", containsString("already applied for leave")));
+
+        cancel(first, memberAccount).andExpect(status().isOk());
+        applyFor(memberAccount, start.plusDays(2), start.plusDays(4)).andExpect(status().isCreated());
+    }
+
+    @Test
+    void anotherEmployeeMayTakeTheSameDay() throws Exception {
+        submit(memberAccount, 2);
+        apply(soloAccount, 2);
+    }
+
     // --- Helpers ---
 
     private ResultActions apply(UserAccount account, int days) throws Exception {
+        return applyFor(account, start, start.plusDays(days - 1)).andExpect(status().isCreated());
+    }
+
+    private ResultActions applyFor(UserAccount account, LocalDate from, LocalDate to) throws Exception {
         String body = """
                 {"leaveTypeId":%d,"startDate":"%s","endDate":"%s","reason":"Holiday"}
-                """.formatted(casual.getLeaveTypeId(), start, start.plusDays(days - 1));
+                """.formatted(casual.getLeaveTypeId(), from, to);
         return mockMvc.perform(post("/api/leave-requests").with(as(account)).with(csrf())
-                        .contentType(MediaType.APPLICATION_JSON).content(body))
-                .andExpect(status().isCreated());
+                .contentType(MediaType.APPLICATION_JSON).content(body));
     }
 
     private int submit(UserAccount account, int days) throws Exception {
