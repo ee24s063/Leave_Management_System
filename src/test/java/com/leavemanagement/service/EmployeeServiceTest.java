@@ -30,6 +30,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 /**
@@ -44,6 +45,7 @@ class EmployeeServiceTest {
     @Mock UserAccountRepository accounts;
     @Mock PasswordEncoder encoder;
     @Spy RoleNames roleNames = new RoleNames("Lab Head");
+    @Mock MailService mailService;
     @InjectMocks EmployeeService service;
 
     UserAccount leadAccount, memberAccount;
@@ -104,17 +106,21 @@ class EmployeeServiceTest {
     }
 
     @Test
-    void newEmployeeGetsAnAccountWithATemporaryPassword() {
+    void newEmployeeGetsAnAccountWithAnEmailedTemporaryPassword() {
         CreatedEmployeeResponse created = service.createEmployee(create(" asha@test.com ", LEAD));
         assertThat(created.username()).isEqualTo("asha@test.com");
-        assertThat(created.temporaryPassword()).hasSize(12);
+        assertThat(created.passwordSentTo()).isEqualTo("asha@test.com");
+        ArgumentCaptor<String> emailed = ArgumentCaptor.forClass(String.class);
+        verify(mailService).sendTemporaryPassword(eq("asha@test.com"), eq("Asha Rao"), eq("asha@test.com"),
+                emailed.capture(), eq(false));
+        assertThat(emailed.getValue()).hasSize(12);
 
         ArgumentCaptor<UserAccount> captor = ArgumentCaptor.forClass(UserAccount.class);
         verify(accounts).save(captor.capture());
         UserAccount account = captor.getValue();
         assertThat(account.isMustChangePassword()).isTrue();
         assertThat(account.isEnabled()).isTrue();
-        assertThat(account.getPasswordHash()).isEqualTo("hash:" + created.temporaryPassword());
+        assertThat(account.getPasswordHash()).isEqualTo("hash:" + emailed.getValue());
         assertThat(account.getRole()).isEqualTo(Role.EMPLOYEE);
         assertThat(created.employee().firstName()).isEqualTo("Asha");
         assertThat(created.employee().phone()).isNull();
@@ -224,7 +230,10 @@ class EmployeeServiceTest {
     @Test
     void passwordResetForcesAChangeAndLogsOutEverywhere() {
         int before = memberAccount.getTokenVersion();
-        String temporary = service.resetPassword(MEMBER);
+        assertThat(service.resetPassword(MEMBER)).isEqualTo("e3@test.com");
+        ArgumentCaptor<String> emailed = ArgumentCaptor.forClass(String.class);
+        verify(mailService).sendTemporaryPassword(eq("e3@test.com"), eq("E 3"), eq("e3@test.com"), emailed.capture(), eq(true));
+        String temporary = emailed.getValue();
         assertThat(temporary).hasSize(12);
         assertThat(memberAccount.isMustChangePassword()).isTrue();
         assertThat(memberAccount.getPasswordHash()).isEqualTo("hash:" + temporary);

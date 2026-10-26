@@ -1,7 +1,7 @@
 package com.leavemanagement.dto;
 
 /**
- * Result of creating an employee: the temporary password is shown to HR once and must be changed at first login
+ * Result of creating an employee: the temporary password has been emailed to passwordSentTo (it is never returned)
  */
-public record CreatedEmployeeResponse(EmployeeView employee, String username, String temporaryPassword) {
+public record CreatedEmployeeResponse(EmployeeView employee, String username, String passwordSentTo) {
 }

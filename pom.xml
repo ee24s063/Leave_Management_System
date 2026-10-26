@@ -117,6 +117,12 @@
             <artifactId>spring-boot-starter-validation</artifactId>
         </dependency>
 
+        <!-- Email: temporary passwords are sent to the employee (SMTP settings in application.properties) -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-mail</artifactId>
+        </dependency>
+
         <!-- Apache POI for Excel (.xlsx) export -->
         <dependency>
             <groupId>org.apache.poi</groupId>

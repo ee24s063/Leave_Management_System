@@ -10,6 +10,7 @@ let isAdmin = false; // the built-in admin account may also delete employees per
 document.addEventListener('DOMContentLoaded', async function() {
     const me = await getCurrentUser();
     isAdmin = !!(me && me.admin);
+    if (isAdmin) loadMailStatus();
     loadAllEmployees();
     document.getElementById('employeeForm').addEventListener('submit', saveEmployee);
     document.getElementById('role').addEventListener('change', () => loadLeadOptions());
@@ -143,20 +144,46 @@ async function saveEmployee(e) {
         }
     } else {
         data.reporting_LeadId = leadValue ? parseInt(leadValue) : null;
+        showAlert('Adding the employee and sending the email...', 'info');
         const result = await apiCall('/employees', 'POST', data);
         if (result) {
-            showPasswordNotice(result.username, result.temporaryPassword);
+            showSentNotice(`Employee added. The temporary password has been sent to ${result.passwordSentTo}.`);
             resetForm();
             loadAllEmployees();
         }
     }
 }
 
-function showPasswordNotice(username, password) {
-    document.getElementById('noticeUsername').textContent = username;
-    document.getElementById('noticePassword').textContent = password;
-    document.getElementById('passwordNotice').hidden = false;
+// The temporary password is emailed, never shown; this notice stays until dismissed
+function showSentNotice(text) {
+    document.getElementById('sentNoticeText').textContent = text;
+    document.getElementById('sentNotice').hidden = false;
     window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+// Admin: which address emails are sent from
+async function loadMailStatus() {
+    const status = await apiCall('/admin/mail-status');
+    if (!status) return;
+    document.getElementById('mailCheck').hidden = false;
+    document.getElementById('mailStatus').textContent = status.configured
+        ? `Temporary passwords are emailed from ${status.from}. Send yourself a test email to check delivery (and the Junk folder).`
+        : 'Email is not set up yet: set LMS_MAIL_USERNAME and LMS_MAIL_PASSWORD on this computer and restart the app. '
+          + 'Until then, employees cannot be added and passwords cannot be reset.';
+}
+
+async function sendTestEmail() {
+    const to = document.getElementById('testEmailTo').value.trim();
+    if (!to) {
+        showAlert('Enter the address to send the test email to', 'warning');
+        return;
+    }
+    const button = document.getElementById('testEmailBtn');
+    button.disabled = true;
+    showAlert('Sending the test email...', 'info');
+    const result = await apiCall('/admin/test-email', 'POST', { to: to });
+    button.disabled = false;
+    if (result) showSentNotice(result.message);
 }
 
 // Fill the form with an employee's details for editing
@@ -220,10 +247,12 @@ function searchEmployees() {
 // Issue a new temporary password
 async function resetPassword(employeeId) {
     const emp = employeesById[employeeId];
-    if (!confirm(`Issue a new temporary password for ${emp ? emp.fullName : 'this employee'}?`)) return;
+    if (!confirm(`Send a new temporary password to ${emp ? emp.fullName + ' (' + emp.email + ')' : 'this employee'}?`
+        + '\nTheir current password will stop working.')) return;
+    showAlert('Sending the email...', 'info');
     const result = await apiCall(`/employees/${employeeId}/reset-password`, 'POST');
     if (result) {
-        showPasswordNotice(emp ? emp.email : '', result.temporaryPassword);
+        showSentNotice(result.message + '.');
     }
 }
 
