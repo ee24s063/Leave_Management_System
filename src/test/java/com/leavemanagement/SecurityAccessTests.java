@@ -20,6 +20,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.hasSize;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestBuilders.formLogin;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
@@ -232,6 +233,30 @@ class SecurityAccessTests {
         UserAccount created = userAccountRepository.findByUsernameIgnoreCase("nia@test.com").orElseThrow();
         assertThat(created.isMustChangePassword()).isTrue();
         assertThat(created.getRole()).isEqualTo(Role.EMPLOYEE);
+    }
+
+    @Test
+    void duplicateEmailOrPhoneIsBlocked() throws Exception {
+        String first = """
+                {"firstName":"Nia","lastName":"New","email":"nia@test.com","phone":"+91 98765 43210","department":"IT",
+                 "designation":"Dev","salary":1000,"dateOfJoining":"2026-01-05","role":"EMPLOYEE"}
+                """;
+        mockMvc.perform(post("/api/employees").with(as(hrAccount)).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content(first))
+                .andExpect(status().isCreated());
+
+        String sameEmail = first.replace("nia@test.com", "NIA@Test.com").replace("98765 43210", "11111 22222");
+        mockMvc.perform(post("/api/employees").with(as(hrAccount)).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content(sameEmail))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message", containsString("email already exists: Nia New")));
+
+        String samePhone = first.replace("nia@test.com", "nia.other@test.com").replace("+91 98765 43210", "9876543210");
+        mockMvc.perform(post("/api/employees").with(as(hrAccount)).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content(samePhone))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message", containsString("phone number already exists: Nia New")));
+        assertThat(userAccountRepository.findByUsernameIgnoreCase("nia.other@test.com")).isEmpty();
     }
 
     @Test

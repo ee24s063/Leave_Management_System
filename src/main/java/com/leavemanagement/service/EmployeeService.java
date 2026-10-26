@@ -43,9 +43,8 @@ public class EmployeeService {
      */
     public CreatedEmployeeResponse createEmployee(CreateEmployeeRequest req) {
         String email = req.email().trim();
-        if (employeeRepository.existsByEmailIgnoreCase(email) || userAccountRepository.existsByUsernameIgnoreCase(email)) {
-            throw new IllegalStateException("An employee or account with this email already exists");
-        }
+        checkEmailNotTaken(email);
+        checkPhoneNotTaken(req.phone(), null, true);
         if (req.reporting_LeadId() != null) {
             validateReportingLead(req.reporting_LeadId(), null, req.role());
         }
@@ -96,14 +95,17 @@ public class EmployeeService {
         if (req.lastName() != null) employee.setLastName(requireText(req.lastName(), "Last name"));
         if (req.department() != null) employee.setDepartment(requireText(req.department(), "Department"));
         if (req.designation() != null) employee.setDesignation(requireText(req.designation(), "Designation"));
-        if (req.phone() != null) employee.setPhone(blankToNull(req.phone()));
+        if (req.phone() != null) {
+            if (!phoneKey(req.phone()).equals(phoneKey(employee.getPhone()))) {
+                checkPhoneNotTaken(req.phone(), employeeId, true);
+            }
+            employee.setPhone(blankToNull(req.phone()));
+        }
         if (req.salary() != null) employee.setSalary(req.salary());
 
         if (req.email() != null && !req.email().trim().equalsIgnoreCase(employee.getEmail())) {
             String email = req.email().trim();
-            if (employeeRepository.existsByEmailIgnoreCase(email) || userAccountRepository.existsByUsernameIgnoreCase(email)) {
-                throw new IllegalStateException("An employee or account with this email already exists");
-            }
+            checkEmailNotTaken(email);
             employee.setEmail(email);
             if (account != null) account.setUsername(email);
         }
@@ -175,6 +177,9 @@ public class EmployeeService {
     public Employee updateOwnPhone(Integer employeeId, String phone) {
         Employee employee = employeeRepository.findById(employeeId)
                 .orElseThrow(() -> new NoSuchElementException("Employee not found"));
+        if (!phoneKey(phone).equals(phoneKey(employee.getPhone()))) {
+            checkPhoneNotTaken(phone, employeeId, false);
+        }
         employee.setPhone(blankToNull(phone));
         return employeeRepository.save(employee);
     }
@@ -328,6 +333,50 @@ public class EmployeeService {
         if (role != Role.LAB_HEAD) {
             throw new IllegalArgumentException("The chosen approver must have the " + head + " role");
         }
+    }
+
+    /**
+     * No two employees (active or not) may share an email, which is also the login username
+     */
+    private void checkEmailNotTaken(String email) {
+        Optional<Employee> existing = employeeRepository.findFirstByEmailIgnoreCase(email);
+        if (existing.isPresent()) {
+            throw new IllegalStateException("An employee with this email already exists: " + describe(existing.get())
+                    + ". Check the details, or edit the existing record instead.");
+        }
+        if (userAccountRepository.existsByUsernameIgnoreCase(email)) {
+            throw new IllegalStateException("A login account with this email already exists. Use a different email.");
+        }
+    }
+
+    /**
+     * No two employees (active or not) may share a phone number. Numbers are compared on their last 10 digits,
+     * so "+91 98765 43210" and "9876543210" match. HR is told who has the number; an employee is not.
+     */
+    private void checkPhoneNotTaken(String phone, Integer employeeId, boolean namesTheOtherEmployee) {
+        String digits = phoneKey(phone);
+        if (digits.isEmpty()) {
+            return;
+        }
+        Optional<Employee> existing = employeeRepository.findByPhoneIsNotNull().stream()
+                .filter(e -> !e.getEmployeeId().equals(employeeId) && digits.equals(phoneKey(e.getPhone())))
+                .findFirst();
+        if (existing.isPresent()) {
+            throw new IllegalStateException(namesTheOtherEmployee
+                    ? "An employee with this phone number already exists: " + describe(existing.get())
+                            + ". Check the details, or edit the existing record instead."
+                    : "This phone number is already used by another employee.");
+        }
+    }
+
+    static String phoneKey(String phone) {
+        String digits = phone == null ? "" : phone.replaceAll("\\D", "");
+        return digits.length() > 10 ? digits.substring(digits.length() - 10) : digits;
+    }
+
+    private static String describe(Employee e) {
+        String who = e.getFullName() + " (#" + e.getEmployeeId() + ")";
+        return e.getStatus() == EmployeeStatus.ACTIVE ? who : who + ", " + e.getStatus().name().toLowerCase();
     }
 
     private static String requireText(String value, String field) {

@@ -70,7 +70,7 @@ function displayEmployees(employees) {
     employeesById = Object.fromEntries(employees.map(e => [e.employeeId, e]));
 
     if (employees.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="9" class="text-center">No employees found</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="10" class="text-center">No employees found</td></tr>';
         return;
     }
 
@@ -80,6 +80,7 @@ function displayEmployees(employees) {
             <td>${emp.employeeId}</td>
             <td>${escapeHtml(emp.fullName)}</td>
             <td>${escapeHtml(emp.email)}</td>
+            <td>${escapeHtml(emp.phone || '-')}</td>
             <td>${escapeHtml(emp.department)}</td>
             <td>${escapeHtml(emp.designation)}</td>
             <td>${escapeHtml(ROLE_LABELS[emp.role] || '-')}</td>

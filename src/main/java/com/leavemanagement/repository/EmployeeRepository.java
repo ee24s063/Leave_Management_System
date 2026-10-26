@@ -15,6 +15,10 @@ public interface EmployeeRepository extends JpaRepository<Employee, Integer> {
 
     boolean existsByEmailIgnoreCase(String email);
 
+    Optional<Employee> findFirstByEmailIgnoreCase(String email);
+
+    List<Employee> findByPhoneIsNotNull();
+
     List<Employee> findByStatus(EmployeeStatus status);
 
     List<Employee> findByDepartment(String department);
