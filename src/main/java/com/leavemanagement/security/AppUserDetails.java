@@ -36,6 +36,13 @@ public class AppUserDetails implements UserDetails {
         return role == r;
     }
 
+    /**
+     * The built-in admin account: HR role without an employee record. Only it may delete employees permanently.
+     */
+    public boolean isAdmin() {
+        return role == Role.HR_ADMIN && employeeId == null;
+    }
+
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
         return List.of(new SimpleGrantedAuthority("ROLE_" + role.name()));

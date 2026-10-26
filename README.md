@@ -29,7 +29,8 @@ A Spring Boot web application for managing employees, leave balances and leave r
   - **Lab Head** (role code `LAB_HEAD`): everything an Employee can do, plus approve or reject the leave and comp-off of the **HR staff** they are assigned to, and see those staff members' requests and balances. The name shown to users is a setting (`app.role-names.lab-head`, or the environment variable `LMS_LAB_HEAD_NAME`), so the role can be renamed without changing code.
 - Nobody can approve or reject their own leave request, and HR users cannot approve or reject an HR colleague's request.
 - New accounts get a **temporary password** that must be changed at first login.
-- HR can reset a user's password. Deactivating an employee (or setting them to Resigned or Relieved) disables their login.
+- HR can reset a user's password. Deactivating an employee (or setting them to Resigned or Relieved) disables their login; **Activate** enables it again.
+- **Delete permanently (admin account only):** the built-in admin login (`admin@lms.local`, which has no employee record) can delete an employee and everything about them: the record, login, leave and comp-off requests, balances, balance history, and every approval they gave or received. The admin must type the employee's full name to confirm. It is refused while the person is anyone's Team Lead or Lab Head. Balance adjustments they made for other employees stay (they are part of those balances), without the link to their account. HR users can only activate and deactivate.
 - HR's changes apply immediately, even to users who are already logged in: every request re-reads the account, so a disabled user is logged out on their next click, and a changed role takes effect on the next request.
 
 ### Employee management (HR)
@@ -38,7 +39,7 @@ A Spring Boot web application for managing employees, leave balances and leave r
 - **HR staff** have two approvers instead: a **Lab Head** (required) and, optionally, a **Team Lead**. The Lab Head field (`headApproverId`) appears on the form when the role is HR. The second approver must be a Team Lead, not another HR user.
 - **No duplicate employees:** an employee cannot be created (or edited) with an email or phone number that another employee already has, including inactive, resigned and relieved ones. Emails are compared ignoring case; phone numbers on their last 10 digits, so `+91 98765 43210` and `9876543210` match. HR sees a warning naming the existing employee; an employee changing their own phone is only told it is taken. A phone number is only checked when it changes, so older duplicates can still be edited.
 - Edit details, change status (Active, Inactive, Resigned, Relieved), change role or reporting lead.
-- Search by name; optionally include inactive employees.
+- Search by first, last or full name (capital letters ignored); the "Include inactive" box applies to the list and to search.
 
 ### Leave management
 - Employees apply for leave for themselves (leave type, dates, reason). Past dates are not allowed, and a request stays within one calendar year.
@@ -198,6 +199,7 @@ curl -H "Authorization: Bearer $TOKEN" http://localhost:8080/lms/api/reports/sum
 | PUT | `/employees/{id}` | HR | Update fields, `status`, `role`, `reporting_LeadId` (or `clearReportingLead: true`), `headApproverId` (HR staff only) |
 | POST | `/employees/{id}/reset-password` | HR | New temporary password |
 | DELETE | `/employees/{id}` | HR | Deactivate and disable login |
+| POST | `/employees/{id}/delete-permanently` | Admin account only | `{"confirmName": "<full name>"}`; deletes the employee and all of their data (409 while they are someone's Team Lead or Lab Head) |
 | GET | `/employees/search?name=` | HR | Search by name |
 
 Example: create an employee (as HR)
@@ -292,7 +294,7 @@ src/test/java/     Spring Boot + MockMvc tests: access rules, approval workflow,
 
 ## Testing
 ```bash
-mvn test                          # all 277 tests, about a minute
+mvn test                          # all 284 tests, about a minute
 mvn test -DexcludedGroups=ui      # without the browser tests
 mvn test -Dtest=UiTests           # only the browser tests
 ```
@@ -301,7 +303,7 @@ Three levels:
 | Level | Where | Tests |
 | --- | --- | --- |
 | Unit: one module at a time, no database (JUnit 5, Mockito) | `src/test/java/com/leavemanagement/{util,entity,security,service}` | 159 |
-| Integration: whole app through the REST API with a real database | `src/test/java/com/leavemanagement/*Tests.java` | 105 |
+| Integration: whole app through the REST API with a real database | `src/test/java/com/leavemanagement/*Tests.java` | 112 |
 | UI: a real headless browser clicking through the pages as each role (Selenium) | `src/test/java/com/leavemanagement/ui/UiTests.java` | 13 |
 
 The UI tests use Microsoft Edge, or Google Chrome when Edge's driver cannot be downloaded; with neither available they are skipped. They save a screenshot per scenario to `target/ui-screenshots`.

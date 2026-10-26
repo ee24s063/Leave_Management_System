@@ -14,4 +14,11 @@ public interface LeaveApprovalRepository extends JpaRepository<LeaveApproval, In
 
     List<LeaveApproval> findByRequestTypeAndRequestIdInOrderByActedAtAscApprovalIdAsc(RequestType requestType,
                                                                                    Collection<Integer> requestIds);
+
+    // Used when an employee is deleted permanently
+    long deleteByRequestTypeAndRequestIdIn(RequestType requestType, Collection<Integer> requestIds);
+
+    long deleteByApproverEmployeeId(Integer approverEmployeeId);
+
+    long deleteByApproverUserId(Integer approverUserId);
 }

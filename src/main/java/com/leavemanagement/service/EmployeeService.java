@@ -250,8 +250,8 @@ public class EmployeeService {
     /**
      * Search employees by name
      */
-    public List<Employee> searchEmployeesByName(String name) {
-        return employeeRepository.searchByName(name);
+    public List<Employee> searchEmployeesByName(String name, boolean includeInactive) {
+        return employeeRepository.searchByName(name.trim(), includeInactive);
     }
 
     /**

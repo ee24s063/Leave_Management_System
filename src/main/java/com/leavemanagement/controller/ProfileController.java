@@ -39,7 +39,7 @@ public class ProfileController {
                 : employeeService.getEmployeeById(me.getEmployeeId())
                         .map(e -> employeeService.toView(e, true))
                         .orElse(null);
-        return new MeResponse(me.getUserId(), me.getUsername(), me.getRole(), me.isMustChangePassword(), employee);
+        return new MeResponse(me.getUserId(), me.getUsername(), me.getRole(), me.isMustChangePassword(), employee, me.isAdmin());
     }
 
     /**
