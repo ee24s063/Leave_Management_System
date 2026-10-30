@@ -84,13 +84,13 @@ public class ReportService {
 
     // Splits adjustedDays into comp-off credits (from the ledger) and other adjustments (the rest)
     private List<BalanceReportRow> toRows(List<BalanceSnapshot> snapshots) {
-        Map<Integer, BigDecimal> credits = new HashMap<>();
-        for (Object[] r : leaveTransactionRepository.sumDaysByEmployee(TransactionType.COMP_OFF_CREDIT)) {
-            credits.put((Integer) r[0], toBigDecimal(r[1]));
+        Map<String, BigDecimal> credits = new HashMap<>();
+        for (Object[] r : leaveTransactionRepository.sumDaysByEmployeeAndLeaveType(TransactionType.COMP_OFF_CREDIT)) {
+            credits.put(r[0] + ":" + r[1], toBigDecimal(r[2]));
         }
         return snapshots.stream().map(s -> {
             BigDecimal credited = s.year() == LeaveBalance.NO_YEAR
-                    ? credits.getOrDefault(s.employeeId(), BigDecimal.ZERO) : BigDecimal.ZERO;
+                    ? credits.getOrDefault(s.employeeId() + ":" + s.leaveTypeId(), BigDecimal.ZERO) : BigDecimal.ZERO;
             return new BalanceReportRow(s.employeeId(), s.employeeName(), s.department(), s.employeeStatus(),
                     s.leadName(), s.leaveTypeId(), s.leaveTypeName(), s.year(), s.totalDaysAllowed(), s.usedDays(),
                     credited, s.adjustedDays().subtract(credited), s.remainingDays());

@@ -98,8 +98,9 @@ async function loadFilters() {
     }
     const types = await apiCall('/leave-types');
     if (types) {
-        document.getElementById('filterLeaveType').innerHTML = '<option value="">All leave types</option>' +
-            types.map(t => `<option value="${t.leaveTypeId}">${escapeHtml(t.leaveTypeName)}</option>`).join('');
+        // Balances exist only for the built-in types: monthly leave (shared by the others) and comp-off
+        document.getElementById('filterLeaveType').innerHTML = '<option value="">All balances</option>' +
+            types.filter(t => t.systemCode).map(t => `<option value="${t.leaveTypeId}">${escapeHtml(t.leaveTypeName)}</option>`).join('');
     }
 }
 
@@ -118,7 +119,7 @@ async function loadSummary() {
     card.className = 'card h-100 ' + (s.employeesWithNegativeBalance > 0 ? 'text-white bg-danger' : 'bg-light');
 
     document.getElementById('dayTotals').textContent =
-        `${s.year}: ${formatDays(s.totalAllotted)} days allotted, ${formatDays(s.totalUsed)} used, ` +
+        `${s.year}: ${formatDays(s.totalAllotted)} days added, ${formatDays(s.totalUsed)} used, ` +
         `${formatDays(s.totalRemaining)} remaining (all employees, not counting comp-off).`;
 }
 

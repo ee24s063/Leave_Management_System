@@ -66,8 +66,8 @@ class EmployeeDeletionTests {
         memberAccount = account(member, member.getEmail(), Role.EMPLOYEE);
 
         casual = leaveTypeRepository.save(new LeaveType(null, "Casual Leave", 12, null, null));
-        leaveBalanceRepository.save(new LeaveBalance(null, member.getEmployeeId(), casual.getLeaveTypeId(),
-                new BigDecimal("12"), BigDecimal.ZERO, BigDecimal.ZERO, year));
+        leaveBalanceRepository.save(new LeaveBalance(null, member.getEmployeeId(), monthly(),
+                new BigDecimal("12"), BigDecimal.ZERO, BigDecimal.ZERO, LeaveBalance.NO_YEAR));
     }
 
     @Test
@@ -111,7 +111,7 @@ class EmployeeDeletionTests {
         assertThat(adjustment.getCreatedByUserId()).isNull();
         assertThat(adjustment.getCreatedByName()).isEqualTo("Hana Test");
         assertThat(leaveBalanceRepository.findByEmployeeIdAndLeaveTypeIdAndYear(member.getEmployeeId(),
-                casual.getLeaveTypeId(), year).orElseThrow().getRemainingDays()).isEqualByComparingTo("12"); // 12 - 1 taken + 1 adjusted
+                monthly(), LeaveBalance.NO_YEAR).orElseThrow().getRemainingDays()).isEqualByComparingTo("12"); // 12 - 1 taken + 1 adjusted
     }
 
     @Test
@@ -194,5 +194,10 @@ class EmployeeDeletionTests {
         a.setEnabled(true);
         a.setMustChangePassword(false);
         return userAccountRepository.save(a);
+    }
+
+    // The shared monthly balance every leave type except comp-off uses
+    private Integer monthly() {
+        return leaveTypeRepository.findBySystemCode("MONTHLY").orElseThrow().getLeaveTypeId();
     }
 }

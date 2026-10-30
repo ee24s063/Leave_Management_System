@@ -3,6 +3,8 @@ package com.leavemanagement;
 import com.leavemanagement.entity.*;
 import com.leavemanagement.repository.*;
 import com.leavemanagement.security.AppUserDetails;
+import com.leavemanagement.service.LeaveAccrualService;
+import com.leavemanagement.service.LeaveService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -19,6 +21,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
+import java.time.YearMonth;
 import java.time.temporal.TemporalAdjusters;
 import java.util.List;
 
@@ -31,7 +34,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * Phase 3: half-day leave, negative balances, comp-off, HR adjustments and the balance ledger
+ * Phase 3: half-day leave, negative balances, comp-off, HR adjustments and the balance ledger;
+ * monthly leave: one shared balance that grows every month and carries over
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -46,10 +50,12 @@ class BalanceAndCompOffTests {
     @Autowired LeaveBalanceRepository leaveBalanceRepository;
     @Autowired LeaveTransactionRepository leaveTransactionRepository;
     @Autowired PasswordEncoder passwordEncoder;
+    @Autowired LeaveService leaveService;
+    @Autowired LeaveAccrualService leaveAccrualService;
 
     UserAccount hrAccount, leadAccount, memberAccount, soloAccount;
     Employee hr, lead, member, solo;
-    LeaveType casual, compOff;
+    LeaveType casual, compOff, monthly;
     LocalDate start = LocalDate.now().plusDays(10);
     int year = start.getYear();
     LocalDate lastSaturday = LocalDate.now().minusDays(1).with(TemporalAdjusters.previousOrSame(DayOfWeek.SATURDAY));
@@ -65,10 +71,11 @@ class BalanceAndCompOffTests {
         solo = employee("Sam", "solo@test.com", null);
         soloAccount = account(solo, Role.EMPLOYEE);
 
-        casual = leaveTypeRepository.save(new LeaveType(null, "Casual Leave", 12, null, null));
+        casual = leaveTypeRepository.save(new LeaveType(null, "Casual Leave", 0, null, null));
         compOff = leaveTypeRepository.findBySystemCode("COMP_OFF").orElseThrow();
+        monthly = leaveTypeRepository.findBySystemCode("MONTHLY").orElseThrow();
         for (Employee e : new Employee[]{member, solo}) {
-            createBalance(e, casual, "12", year).andExpect(status().isCreated());
+            leaveService.creditMonth(e.getEmployeeId(), YearMonth.now(), new BigDecimal("12"));
         }
     }
 
@@ -82,7 +89,7 @@ class BalanceAndCompOffTests {
                 .andExpect(jsonPath("$.halfDay").value("FIRST_HALF"))
                 .andExpect(jsonPath("$.balanceAfterApproval").value(11.5));
         approve("leave-requests", id, hrAccount).andExpect(jsonPath("$.status").value("APPROVED"));
-        assertThat(balance(solo, casual, year).getRemainingDays()).isEqualByComparingTo("11.5");
+        assertThat(balance(solo, monthly, 0).getRemainingDays()).isEqualByComparingTo("11.5");
     }
 
     @Test
@@ -98,16 +105,76 @@ class BalanceAndCompOffTests {
         applyLeave(soloAccount, casual, dec31, dec31.plusDays(1), null).andExpect(status().isBadRequest());
     }
 
-    // --- Negative balance ---
+    // --- Monthly leave and negative balance ---
 
     @Test
-    void approvalWithoutAnyBalanceGoesNegative() throws Exception {
-        LeaveType sick = leaveTypeRepository.save(new LeaveType(null, "Sick Leave", 10, null, null));
+    void everyLeaveTypeTakesFromTheMonthlyBalance() throws Exception {
+        LeaveType sick = leaveTypeRepository.save(new LeaveType(null, "Sick Leave", 0, null, null));
+        approve("leave-requests", submitLeave(soloAccount, casual, start, start, null), hrAccount);
+        approve("leave-requests", submitLeave(soloAccount, sick, start.plusDays(3), start.plusDays(4), null), hrAccount);
+        assertThat(balance(solo, monthly, 0).getRemainingDays()).isEqualByComparingTo("9");
+        assertThat(leaveBalanceRepository.findByEmployeeId(solo.getEmployeeId())).hasSize(1);
+    }
+
+    @Test
+    void approvalBeyondTheBalanceGoesNegative() throws Exception {
+        LeaveType sick = leaveTypeRepository.save(new LeaveType(null, "Sick Leave", 0, null, null));
+        adjust(hrAccount, solo, monthly, "-12", "Correction").andExpect(status().isOk());
         int id = submitLeave(soloAccount, sick, start, start.plusDays(1), null);
         mockMvc.perform(get("/api/leave-requests/" + id).with(as(hrAccount)))
                 .andExpect(jsonPath("$.balanceAfterApproval").value(-2));
         approve("leave-requests", id, hrAccount).andExpect(jsonPath("$.status").value("APPROVED"));
-        assertThat(balance(solo, sick, year).getRemainingDays()).isEqualByComparingTo("-2");
+        assertThat(balance(solo, monthly, 0).getRemainingDays()).isEqualByComparingTo("-2");
+    }
+
+    @Test
+    void unusedMonthlyDaysCarryOverAndEachMonthIsAddedOnce() throws Exception {
+        YearMonth thisMonth = YearMonth.now();
+        // One day taken this month, then the next two months are added (also when the app was off for a while)
+        approve("leave-requests", submitLeave(soloAccount, casual, start, start, null), hrAccount);
+        leaveAccrualService.creditDueMonths(thisMonth.plusMonths(2));
+        assertThat(balance(solo, monthly, 0).getRemainingDays()).isEqualByComparingTo("16"); // 12 - 1 + 2.5 + 2.5
+        // Running again adds nothing
+        assertThat(leaveAccrualService.creditDueMonths(thisMonth.plusMonths(2))).isZero();
+        assertThat(balance(solo, monthly, 0).getRemainingDays()).isEqualByComparingTo("16");
+        // Into the next year too: no reset
+        leaveAccrualService.creditDueMonths(thisMonth.plusMonths(14));
+        assertThat(balance(solo, monthly, 0).getRemainingDays()).isEqualByComparingTo("46");
+    }
+
+    @Test
+    void employeesNeverCreditedStartWithTheCurrentMonthAndInactiveOnesGetNothing() throws Exception {
+        lead.setStatus(EmployeeStatus.INACTIVE);
+        employeeRepository.save(lead);
+        leaveAccrualService.creditDueMonths(YearMonth.now());
+        assertThat(balance(hr, monthly, 0).getRemainingDays()).isEqualByComparingTo("2.5");
+        assertThat(leaveBalanceRepository.findByEmployeeId(lead.getEmployeeId())).isEmpty();
+        assertThat(balance(solo, monthly, 0).getRemainingDays()).isEqualByComparingTo("12"); // already had this month
+    }
+
+    @Test
+    void reactivatedEmployeesSkipTheMonthsTheyWereInactive() throws Exception {
+        YearMonth thisMonth = YearMonth.now();
+        solo.setStatus(EmployeeStatus.INACTIVE);
+        employeeRepository.save(solo);
+        leaveAccrualService.creditDueMonths(thisMonth.plusMonths(3));     // three months away: nothing added
+        assertThat(balance(solo, monthly, 0).getRemainingDays()).isEqualByComparingTo("12");
+        leaveAccrualService.restartAt(solo.getEmployeeId(), thisMonth.plusMonths(3)); // back: only that month
+        assertThat(balance(solo, monthly, 0).getRemainingDays()).isEqualByComparingTo("14.5");
+        solo.setStatus(EmployeeStatus.ACTIVE);
+        employeeRepository.save(solo);
+        leaveAccrualService.creditDueMonths(thisMonth.plusMonths(4));     // and on from there
+        assertThat(balance(solo, monthly, 0).getRemainingDays()).isEqualByComparingTo("17");
+    }
+
+    @Test
+    void reactivationInTheSameMonthAddsNothing() throws Exception {
+        String body = "{\"status\":\"%s\"}";
+        mockMvc.perform(put("/api/employees/" + solo.getEmployeeId()).with(as(hrAccount)).with(csrf())
+                .contentType(MediaType.APPLICATION_JSON).content(body.formatted("INACTIVE"))).andExpect(status().isOk());
+        mockMvc.perform(put("/api/employees/" + solo.getEmployeeId()).with(as(hrAccount)).with(csrf())
+                .contentType(MediaType.APPLICATION_JSON).content(body.formatted("ACTIVE"))).andExpect(status().isOk());
+        assertThat(balance(solo, monthly, 0).getRemainingDays()).isEqualByComparingTo("12"); // already had this month
     }
 
     // --- Comp-off ---
@@ -166,27 +233,40 @@ class BalanceAndCompOffTests {
     }
 
     @Test
-    void compOffCannotBeAllottedLikeOtherLeave() throws Exception {
-        createBalance(solo, compOff, "5", year).andExpect(status().isBadRequest());
+    void builtInTypesCannotBeDeletedOrRenamed() throws Exception {
+        for (LeaveType builtIn : new LeaveType[]{compOff, monthly}) {
+            mockMvc.perform(delete("/api/leave-types/" + builtIn.getLeaveTypeId()).with(as(hrAccount)).with(csrf()))
+                    .andExpect(status().isBadRequest());
+            mockMvc.perform(put("/api/leave-types/" + builtIn.getLeaveTypeId()).with(as(hrAccount)).with(csrf())
+                            .contentType(MediaType.APPLICATION_JSON).content("{\"leaveTypeName\":\"Bonus\"}"))
+                    .andExpect(status().isBadRequest());
+        }
     }
 
     @Test
-    void compOffTypeCannotBeDeletedOrRenamed() throws Exception {
-        mockMvc.perform(delete("/api/leave-types/" + compOff.getLeaveTypeId()).with(as(hrAccount)).with(csrf()))
-                .andExpect(status().isBadRequest());
-        mockMvc.perform(put("/api/leave-types/" + compOff.getLeaveTypeId()).with(as(hrAccount)).with(csrf())
-                        .contentType(MediaType.APPLICATION_JSON).content("{\"leaveTypeName\":\"Bonus\"}"))
-                .andExpect(status().isBadRequest());
+    void aLeaveTypeNeedsOnlyAName() throws Exception {
+        mockMvc.perform(post("/api/leave-types").with(as(hrAccount)).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"leaveTypeName\":\" Sick Leave \"}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.leaveTypeName").value("Sick Leave"))
+                .andExpect(jsonPath("$.maxDaysPerYear").value(0));
+    }
+
+    @Test
+    void balancesAreNoLongerAllottedPerTypeAndYear() throws Exception {
+        mockMvc.perform(post("/api/leave-balance?employeeId=%d&leaveTypeId=%d&totalDays=5&year=%d"
+                        .formatted(solo.getEmployeeId(), casual.getLeaveTypeId(), year)).with(as(hrAccount)).with(csrf()))
+                .andExpect(status().is4xxClientError());
     }
 
     // --- HR adjustments ---
 
     @Test
     void hrAdjustsBalanceWithAReason() throws Exception {
-        adjust(hrAccount, solo, casual, "1.5", "Carried over from last year").andExpect(status().isOk());
-        assertThat(balance(solo, casual, year).getRemainingDays()).isEqualByComparingTo("13.5");
-        adjust(hrAccount, solo, casual, "-3", "Leave taken before the system went live").andExpect(status().isOk());
-        assertThat(balance(solo, casual, year).getRemainingDays()).isEqualByComparingTo("10.5");
+        adjust(hrAccount, solo, monthly, "1.5", "Carried over from last year").andExpect(status().isOk());
+        assertThat(balance(solo, monthly, 0).getRemainingDays()).isEqualByComparingTo("13.5");
+        adjust(hrAccount, solo, monthly, "-3", "Leave taken before the system went live").andExpect(status().isOk());
+        assertThat(balance(solo, monthly, 0).getRemainingDays()).isEqualByComparingTo("10.5");
     }
 
     @Test
@@ -203,14 +283,6 @@ class BalanceAndCompOffTests {
         assertThat(balance(solo, compOff, 0).getRemainingDays()).isEqualByComparingTo("1");
     }
 
-    @Test
-    void yearZeroIsReservedForTheCompOffBalance() throws Exception {
-        createBalance(solo, casual, "5", 0).andExpect(status().isBadRequest());
-        mockMvc.perform(post("/api/leave-balance/reset-yearly?employeeId=%d&year=0".formatted(solo.getEmployeeId()))
-                        .with(as(hrAccount)).with(csrf()))
-                .andExpect(status().isBadRequest());
-    }
-
     // --- Ledger ---
 
     @Test
@@ -220,15 +292,15 @@ class BalanceAndCompOffTests {
         int b = submitLeave(soloAccount, casual, start.plusDays(5), start.plusDays(5), "SECOND_HALF");
         approve("leave-requests", b, hrAccount);
         cancel("leave-requests", a, soloAccount);
-        adjust(hrAccount, solo, casual, "2", "Bonus days");
+        adjust(hrAccount, solo, monthly, "2", "Bonus days");
 
         List<LeaveTransaction> ledger = leaveTransactionRepository.findByEmployeeIdAndYearInOrderByCreatedAtAscTransactionIdAsc(
-                solo.getEmployeeId(), List.of(year));
+                solo.getEmployeeId(), List.of(LeaveBalance.NO_YEAR));
         BigDecimal sum = ledger.stream().map(LeaveTransaction::getDays).reduce(BigDecimal.ZERO, BigDecimal::add);
         assertThat(ledger).extracting(LeaveTransaction::getType).containsExactly(
-                TransactionType.ALLOCATION, TransactionType.LEAVE_DEDUCTED, TransactionType.LEAVE_DEDUCTED,
+                TransactionType.MONTHLY_CREDIT, TransactionType.LEAVE_DEDUCTED, TransactionType.LEAVE_DEDUCTED,
                 TransactionType.LEAVE_RESTORED, TransactionType.ADJUSTMENT);
-        assertThat(sum).isEqualByComparingTo(balance(solo, casual, year).getRemainingDays());
+        assertThat(sum).isEqualByComparingTo(balance(solo, monthly, 0).getRemainingDays());
         assertThat(sum).isEqualByComparingTo("13.5");
         assertThat(ledger.get(4).getCreatedByName()).isEqualTo("Hana Test");
     }
@@ -242,11 +314,6 @@ class BalanceAndCompOffTests {
     }
 
     // --- Helpers ---
-
-    private ResultActions createBalance(Employee e, LeaveType type, String days, int y) throws Exception {
-        return mockMvc.perform(post("/api/leave-balance?employeeId=%d&leaveTypeId=%d&totalDays=%s&year=%d"
-                .formatted(e.getEmployeeId(), type.getLeaveTypeId(), days, y)).with(as(hrAccount)).with(csrf()));
-    }
 
     private ResultActions applyLeave(UserAccount account, LeaveType type, LocalDate from, LocalDate to, String halfDay) throws Exception {
         String body = """

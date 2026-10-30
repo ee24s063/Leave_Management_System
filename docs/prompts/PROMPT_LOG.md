@@ -80,3 +80,11 @@ to repeat them:
 | 17 | `I tested it. Received a test mail` / `I've checked both and iam receiving the mails. it is working fine` | Test the real flow before committing | Test email, new-employee email and reset email received; committed and pushed for a pull request | branch `feature/email-temporary-password` |
 | 18 | `is everything changed in the code got saved?` | Check before moving on | All work committed, pushed and merged (PRs #3 to #7); local main updated; the stricter rule was still in the stash | - |
 | 19 | `Add The stricter "one request per day" rule as its own pull request` | One small change per pull request | Half-day exception removed: one leave request per day; re-applied on the current code (keeping the Lab Head status) | branch `fix/one-request-per-day` |
+
+## Session 2026-10-28
+
+| # | Prompt (as written) | Principle | Outcome | Commit |
+| --- | --- | --- | --- | --- |
+| 1 | `hey, i need to make some changes in leave creation.` / `no not in this. Need to make changes in leave type creation` | Show the current behaviour before changing it | Leave type form, fields, current types and gaps listed | - |
+| 2 | `while creating entrying Max days is not required. While creating a employee give him/her 2.5days initially, we can edit it afterwards if required. The days are counted per month 2.5days per month and the balance should carry over for next month ...` | Clarify decisions before building (one pool or per type, year end, existing employees) | One shared Monthly Leave balance (all types except comp-off take from it), 2.5 days on creation and on the 1st of every month, carried over with no yearly reset; missed months added once; "Max days" removed; HR "Create balance" and "Reset year" removed (Adjust Balance stays); migration V6; 290 tests passing | branch `feature/monthly-leave-accrual` |
+| 3 | `For reactivated employees skip the inactive months. Modify this, after this we'll commit hte changes and look for our next modifications` | Close a known gap before committing | An employee made active again gets only the current month's days (if not already credited) and continues from there; months spent inactive earn nothing; 2 new tests | branch `feature/monthly-leave-accrual` |

@@ -20,7 +20,7 @@ import java.util.stream.Collectors;
 
 /**
  * REST Controller for Leave Balance management endpoints.
- * Viewing follows AccessPolicy (self / own team / HR); creating, adjusting and resetting is HR-only (SecurityConfig).
+ * Viewing follows AccessPolicy (self / own team / HR); adjusting is HR-only (SecurityConfig).
  */
 @RestController
 @RequestMapping("/api/leave-balance")
@@ -67,19 +67,6 @@ public class LeaveBalanceController {
     }
 
     /**
-     * Create leave balance for an employee (HR); total days may include a half day, e.g. 12.5
-     */
-    @PostMapping
-    public ResponseEntity<LeaveBalance> createLeaveBalance(
-            @RequestParam Integer employeeId,
-            @RequestParam Integer leaveTypeId,
-            @RequestParam BigDecimal totalDays,
-            @RequestParam Integer year) {
-        LeaveBalance balance = leaveService.createLeaveBalance(employeeId, leaveTypeId, totalDays, year);
-        return ResponseEntity.status(HttpStatus.CREATED).body(balance);
-    }
-
-    /**
      * HR correction: add (positive) or remove (negative) days with a reason; recorded in the ledger
      */
     @PostMapping("/adjust")
@@ -99,14 +86,5 @@ public class LeaveBalanceController {
             @RequestParam Integer year) {
         accessPolicy.checkCanView(employeeId);
         return leaveService.hasSufficientLeaveBalance(employeeId, leaveTypeId, daysRequired, year);
-    }
-
-    /**
-     * Reset yearly leave balance (HR)
-     */
-    @PostMapping("/reset-yearly")
-    public ResponseEntity<Void> resetYearlyBalance(@RequestParam Integer employeeId, @RequestParam Integer year) {
-        leaveService.resetYearlyLeaveBalance(employeeId, year);
-        return ResponseEntity.noContent().build();
     }
 }

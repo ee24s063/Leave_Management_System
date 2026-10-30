@@ -46,6 +46,7 @@ class EmployeeServiceTest {
     @Mock PasswordEncoder encoder;
     @Spy RoleNames roleNames = new RoleNames("Lab Head");
     @Mock MailService mailService;
+    @Mock LeaveAccrualService leaveAccrualService;
     @InjectMocks EmployeeService service;
 
     UserAccount leadAccount, memberAccount;
@@ -124,6 +125,7 @@ class EmployeeServiceTest {
         assertThat(account.getRole()).isEqualTo(Role.EMPLOYEE);
         assertThat(created.employee().firstName()).isEqualTo("Asha");
         assertThat(created.employee().phone()).isNull();
+        verify(leaveAccrualService).creditFirstMonth(created.employee().employeeId()); // starts with this month's leave
     }
 
     @Test

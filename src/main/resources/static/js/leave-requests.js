@@ -23,7 +23,9 @@ document.addEventListener('DOMContentLoaded', async function() {
         document.getElementById('applySection').hidden = true;
         document.getElementById('tab-mine').hidden = true;
     } else {
-        loadLeaveTypeOptions('leaveTypeId');
+        // Monthly Leave is the shared balance, not a type to apply for
+        loadLeaveTypeOptions('leaveTypeId').then(types => types.filter(t => t.systemCode === 'MONTHLY').forEach(t =>
+            document.querySelector(`#leaveTypeId option[value="${t.leaveTypeId}"]`)?.remove()));
         document.getElementById('leaveRequestForm').addEventListener('submit', submitLeaveRequest);
         ['startDate', 'endDate'].forEach(id => document.getElementById(id).addEventListener('change', updateHalfDayOption));
     }
