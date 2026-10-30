@@ -3,18 +3,44 @@
 const API_BASE_URL = '/lms/api';
 
 // Display alerts
-function showAlert(message, type = 'success') {
-    const alertDiv = document.createElement('div');
-    alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
-    alertDiv.innerHTML = `
-        ${escapeHtml(message)}
-        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-    `;
-    document.body.insertBefore(alertDiv, document.body.firstChild);
+// Messages float in the top-right corner, so they are seen wherever the page is scrolled.
+// Errors stay until closed; warnings stay a little longer than confirmations.
+const NOTICE_ICONS = { success: '✓', info: 'ℹ', warning: '⚠', danger: '✕' };
+const NOTICE_SECONDS = { success: 5, info: 5, warning: 8 };
+const MAX_NOTICES = 4;
 
-    setTimeout(() => {
-        alertDiv.remove();
-    }, 5000);
+function showAlert(message, type = 'success') {
+    let area = document.getElementById('noticeArea');
+    if (!area) {
+        area = document.createElement('div');
+        area.id = 'noticeArea';
+        area.className = 'notice-area';
+        document.body.appendChild(area);
+    }
+
+    const notice = document.createElement('div');
+    notice.className = `alert alert-${type} notice`;
+    notice.setAttribute('role', type === 'danger' || type === 'warning' ? 'alert' : 'status');
+    notice.innerHTML = `
+        <span class="notice-icon" aria-hidden="true">${NOTICE_ICONS[type] || NOTICE_ICONS.info}</span>
+        <span class="notice-text">${escapeHtml(message)}</span>
+        <button type="button" class="btn-close" aria-label="Close"></button>
+    `;
+    notice.querySelector('.btn-close').addEventListener('click', () => closeNotice(notice));
+    area.appendChild(notice);
+
+    while (area.children.length > MAX_NOTICES) {
+        area.firstElementChild.remove();
+    }
+    if (NOTICE_SECONDS[type]) {
+        setTimeout(() => closeNotice(notice), NOTICE_SECONDS[type] * 1000);
+    }
+}
+
+function closeNotice(notice) {
+    if (!notice.isConnected || notice.classList.contains('closing')) return;
+    notice.classList.add('closing');
+    setTimeout(() => notice.remove(), 300);
 }
 
 // Escape text before inserting it into HTML (names, reasons and comments are typed by users)
