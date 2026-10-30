@@ -163,7 +163,13 @@ class UiTests {
         waitForText("#leaveRequestsList", "Mia Test");
         clickWhenReady(By.cssSelector("#leaveRequestsList button.btn-success"));
         answerPrompt("Enjoy");
-        waitForText("body", "Approved and sent to HR for final approval");
+        waitForText("#noticeArea", "Approved and sent to HR for final approval");
+        // The message floats in the corner, so it is seen wherever the page is scrolled
+        WebElement notice = driver.findElement(By.cssSelector("#noticeArea .alert-success"));
+        assertThat(driver.findElement(By.id("noticeArea")).getCssValue("position")).isEqualTo("fixed");
+        assertThat(notice.isDisplayed()).isTrue();
+        notice.findElement(By.cssSelector(".btn-close")).click();
+        wait.until(ExpectedConditions.stalenessOf(notice));
         logout();
     }
 

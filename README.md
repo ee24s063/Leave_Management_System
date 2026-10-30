@@ -116,6 +116,8 @@ Every export is an `.xlsx` file with a bold, frozen header row, filters on each 
 | Employees | HR only |
 | Login, Change Password | Everyone |
 
+Messages after an action (saved, approved, a warning, an error) appear in the **top-right corner** and stay in view while the page is scrolled: green for done, yellow for a warning, red for an error. Confirmations close after 5 seconds and warnings after 8; errors stay until closed with ✕.
+
 ## Technology
 
 - **Spring Boot 3.1.5**, Java **17** or newer (tested on Java 21)
