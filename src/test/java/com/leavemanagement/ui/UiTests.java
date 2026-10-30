@@ -77,10 +77,10 @@ class UiTests {
         account(newcomer, Role.EMPLOYEE, true); // still has a temporary password
 
         LeaveType casual = leaveTypeRepository.save(new LeaveType(null, "Casual Leave", 12, null, null));
-        leaveBalanceRepository.save(new LeaveBalance(null, member.getEmployeeId(), casual.getLeaveTypeId(),
-                new BigDecimal("12"), BigDecimal.ZERO, BigDecimal.ZERO, year));
-        leaveBalanceRepository.save(new LeaveBalance(null, solo.getEmployeeId(), casual.getLeaveTypeId(),
-                new BigDecimal("2"), new BigDecimal("3"), BigDecimal.ZERO, year)); // already below zero
+        leaveBalanceRepository.save(new LeaveBalance(null, member.getEmployeeId(), monthly(),
+                new BigDecimal("12"), BigDecimal.ZERO, BigDecimal.ZERO, LeaveBalance.NO_YEAR));
+        leaveBalanceRepository.save(new LeaveBalance(null, solo.getEmployeeId(), monthly(),
+                new BigDecimal("2"), new BigDecimal("3"), BigDecimal.ZERO, LeaveBalance.NO_YEAR)); // already below zero
 
         driver = startBrowser();
         System.out.println("UI TESTS running in " + ((HasCapabilities) driver).getCapabilities().getBrowserName()
@@ -179,10 +179,10 @@ class UiTests {
         waitForText("body", "Leave approved");
 
         open("/leave-balance?employeeId=" + member.getEmployeeId() + "&year=" + year);
-        waitForText("#leaveBalanceList", "Casual Leave");
+        waitForText("#leaveBalanceList", "Monthly Leave");
         WebElement row = driver.findElement(By.cssSelector("#leaveBalanceList tr"));
-        assertThat(row.findElements(By.tagName("td")).get(4).getText()).isEqualTo("2");    // used
-        assertThat(row.findElements(By.tagName("td")).get(5).getText()).startsWith("10"); // remaining
+        assertThat(row.findElements(By.tagName("td")).get(3).getText()).isEqualTo("2");    // used
+        assertThat(row.findElements(By.tagName("td")).get(4).getText()).startsWith("10"); // remaining
         waitForText("#ledgerList", "Leave taken");
     }
 
@@ -403,5 +403,10 @@ class UiTests {
         a.setEnabled(true);
         a.setMustChangePassword(mustChangePassword);
         userAccountRepository.save(a);
+    }
+
+    // The shared monthly balance every leave type except comp-off uses
+    private Integer monthly() {
+        return leaveTypeRepository.findBySystemCode("MONTHLY").orElseThrow().getLeaveTypeId();
     }
 }

@@ -65,8 +65,11 @@ A Spring Boot web application for managing employees, leave balances and leave r
 - **Negative balance:** there is no lower limit. If an approval would take the balance below zero, HR sees a warning ("will go below zero") but can still approve. Negative balances are shown in red.
 - **Approval history:** every approve and reject is recorded with step, approver, comments and time, and is shown in request details and in the employee's leave history.
 - **Cancelling:** employees can withdraw a pending request at any time, and cancel approved leave before it starts. HR can cancel at any time. Deducted days are given back.
-- Leave balances are tracked per employee, per leave type, per year: **remaining = allotted + adjustments/credits − used**. Values can be whole or half days (e.g. 12.5). HR creates and resets them.
-- HR manages leave types (name, maximum days per year, description) on the Leave Balance page.
+- **Monthly leave:** every employee has one shared leave balance. A new employee starts with **2.5 days**, and every active employee gets **2.5 more on the 1st of each month**. Unused days carry over to the next month and into the next year (no reset). Example: 2.5 in January, 1 day taken, 1.5 left; on 1 February it becomes 4.
+- All leave types (Casual, Medical, ...) take their days from this one balance; only compensatory leave has its own. **Remaining = monthly days added + adjustments/credits − used.** Values can be whole or half days.
+- The monthly days are added when the app starts and every night just after midnight, so a month missed while the app was not running is added the next time it runs. Each month is added only once per employee. The amount is set by `app.leave.monthly-days` (or `LMS_MONTHLY_LEAVE_DAYS`), default 2.5.
+- Months spent inactive (or resigned/relieved) earn nothing. An employee made active again gets the current month's days (unless they already had them) and carries on from there.
+- HR manages leave types (name and an optional description) on the Leave Balance page. There is no yearly maximum per type.
 
 ### Compensatory leave (comp-off)
 - An employee who worked on a weekend or holiday requests comp-off on the **Comp-off** page (days worked + work done). One day of comp-off per day worked; whole days only; only for days already worked, and each day only once.
@@ -76,13 +79,13 @@ A Spring Boot web application for managing employees, leave balances and leave r
 - A pending comp-off request can be withdrawn. An approved credit is corrected by HR with a balance adjustment.
 
 ### Balance adjustments and history
-- **HR adjustments:** HR can add or remove days (whole or half) on any balance, including comp-off, with a required reason. Use this for corrections, leave taken before the system existed, or working-day adjustments.
-- **Balance history (ledger):** every change to a balance is recorded: allotment, leave taken, leave cancelled, comp-off credited, HR adjustment, yearly reset, with days, reason, who did it and when. The entries always add up to the balance. Employees see their own history; Team Leads their team's; HR everyone's.
+- **HR adjustments:** HR can add or remove days (whole or half) on the monthly or the comp-off balance, with a required reason. Use this for corrections, leave taken before the system existed, or working-day adjustments.
+- **Balance history (ledger):** every change to a balance is recorded: monthly leave added, leave taken (with its leave type), leave cancelled, comp-off credited, HR adjustment, with days, reason, who did it and when. The entries always add up to the balance. Employees see their own history; Team Leads their team's; HR everyone's.
 
 ### Dashboard
-- **HR** (`/dashboard`): cards for active employees, requests waiting for a Team Lead and waiting for HR (leave + comp-off, split underneath), and employees with a balance below zero (red when above 0); the year's total days allotted, used and remaining.
+- **HR** (`/dashboard`): cards for active employees, requests waiting for a Team Lead and waiting for HR (leave + comp-off, split underneath), and employees with a balance below zero (red when above 0); total monthly days added, used and remaining.
   - **Negative balances:** every balance below zero, with team, lead, remaining days and the day it went below zero (from the ledger).
-  - **Balance summary:** one row per employee per leave type (plus their comp-off balance): allotted, used, comp-off credited, other adjustments, remaining. Filter by year, department and leave type; click "Remaining" to sort.
+  - **Balance summary:** one row per employee for the monthly balance (plus their comp-off balance): monthly days added, used, comp-off credited, other adjustments, remaining. Filter by department and balance; click "Remaining" to sort.
   - Each name links to that employee's balance and history on the Leave Balance page.
   - **Excel exports** (see below) for both tables, leave requests and the employee list.
 - **Team Lead** ("My team"): team size, requests waiting for them, requests waiting for HR, and their reports' balances. No organisation-wide numbers.
@@ -92,7 +95,7 @@ Every export is an `.xlsx` file with a bold, frozen header row, filters on each 
 
 | Export | Where | Contents |
 | --- | --- | --- |
-| Leave balance | Dashboard, Balance summary | One row per employee per leave type (plus comp-off) for the chosen year, department and leave type; totals row at the bottom |
+| Leave balance | Dashboard, Balance summary | One row per employee per balance (monthly and comp-off) for the chosen department and balance; totals row at the bottom |
 | Negative balances | Dashboard, Negative balances | Balances below zero, most negative first, with the date each went below zero |
 | Leave requests | Dashboard, Excel exports | Requests with any day in a date range, optionally one status; both approval steps (action, by whom, when, comments) |
 | Balance history | Leave Balance page | Every change to one employee's balances in a year, and to their comp-off balance |
@@ -104,7 +107,7 @@ Every export is an `.xlsx` file with a bold, frozen header row, filters on each 
 | Home, My Profile, Leave Balance (with balance history) | Everyone |
 | Comp-off: request, own balance, My Requests / All tabs | Everyone |
 | Comp-off: Team Approvals / HR Approvals tabs | Team Lead and Lab Head / HR |
-| Leave Balance: create balance, adjust balance, leave types | HR |
+| Leave Balance: adjust balance, leave types | HR |
 | Leave Requests: My Requests and All tabs | Everyone |
 | Leave Requests: Team Approvals tab (with pending count) | Team Lead, Lab Head |
 | Leave Requests: HR Approvals tab (with pending count) | HR |
@@ -162,15 +165,14 @@ The app runs at **http://localhost:8080/lms/**.
 
    Set the mail variables once in PowerShell (then reopen the terminal / VS Code): `setx LMS_MAIL_USERNAME "hrsgbc@htic.iitm.ac.in"` and `setx LMS_MAIL_PASSWORD "<app password>"`. Logged in as `admin@lms.local`, the **Employees** page shows which address mail is sent from and has a **Send test email** button to check delivery (look in the Junk folder too).
 3. On **Leave Balance**, add the leave types you use (for example Sick Leave, Casual Leave).
-4. On **Employees**, create your **Team Leads first**, then the employees who report to them. Each new user receives their temporary password by email.
-5. On **Leave Balance**, create each employee's balance for the year.
+4. On **Employees**, create your **Team Leads first**, then the employees who report to them. Each new user receives their temporary password by email and starts with 2.5 days of monthly leave; use **Adjust Balance** to change it.
 
 The admin account is not an employee, so it cannot apply for leave. Create a separate employee record with the HR role for anyone in HR who takes leave.
 
 ### Database
 - The database file is `leavemanagement.db` in the folder the app is started from.
 - The schema is created and upgraded by **Flyway** from `src/main/resources/db/migration`. Hibernate does not change the schema (`ddl-auto=none`).
-- Upgrading is automatic. For example, a Phase 1 database gets migration V2 at the next start: pending requests become "Waiting for Team Lead", and earlier approve/reject decisions are moved into the approval history. V3 adds the built-in Compensatory Leave type and writes opening ledger entries for existing balances (allotted days and days already used). V4 adds the token version used to cancel login tokens. V5 adds the Lab Head approver (`head_approver_id`) to employees and moves HR staff's pending requests to "Waiting for Lab Head / Team Lead"; HR then sets a Lab Head on each HR employee so those requests reach an approver.
+- Upgrading is automatic. For example, a Phase 1 database gets migration V2 at the next start: pending requests become "Waiting for Team Lead", and earlier approve/reject decisions are moved into the approval history. V3 adds the built-in Compensatory Leave type and writes opening ledger entries for existing balances (allotted days and days already used). V4 adds the token version used to cancel login tokens. V5 adds the Lab Head approver (`head_approver_id`) to employees and moves HR staff's pending requests to "Waiting for Lab Head / Team Lead"; HR then sets a Lab Head on each HR employee so those requests reach an approver. V6 adds the built-in Monthly Leave type and folds each employee's old per-type yearly balances (and their ledger entries) into one monthly balance.
 - A `leavemanagement.db` left over from versions before Flyway will not start. Move or delete it, and a new one is created.
 
 ## REST API
@@ -254,21 +256,19 @@ The server works out the approval step from the request's status and the caller'
 ### Leave balances and types
 | Method | Path | Who | Description |
 | --- | --- | --- | --- |
-| GET | `/leave-balance/employee/{employeeId}/{year}` | Self, own lead, HR | Balances for a year, plus the comp-off balance (`year: 0`). Each has `totalDaysAllowed`, `adjustedDays`, `usedDays`, `remainingDays` |
-| GET | `/leave-balance/transactions/{employeeId}/{year}` | Self, own lead, HR | Balance history (ledger) for the year and the comp-off balance |
-| POST | `/leave-balance?employeeId=&leaveTypeId=&totalDays=&year=` | HR | Create a balance (`totalDays` may be e.g. 12.5; not for comp-off) |
-| POST | `/leave-balance/adjust` | HR | `{"employeeId", "leaveTypeId", "year", "days", "reason"}`: `days` positive adds, negative removes |
-| POST | `/leave-balance/reset-yearly?employeeId=&year=` | HR | Reset used days to 0 |
+| GET | `/leave-balance/employee/{employeeId}/{year}` | Self, own lead, HR | The monthly and comp-off balances (`year: 0`, not tied to a year). Each has `totalDaysAllowed` (monthly days added), `adjustedDays`, `usedDays`, `remainingDays` |
+| GET | `/leave-balance/transactions/{employeeId}/{year}` | Self, own lead, HR | Balance history (ledger) of those balances |
+| POST | `/leave-balance/adjust` | HR | `{"employeeId", "leaveTypeId", "year", "days", "reason"}`: `days` positive adds, negative removes; any type other than comp-off adjusts the monthly balance |
 | GET | `/leave-types` | Everyone | List leave types |
-| POST / PUT / DELETE | `/leave-types[/{id}]` | HR | Manage leave types |
+| POST / PUT / DELETE | `/leave-types[/{id}]` | HR | Manage leave types (`leaveTypeName`, optional `description`); the built-in Monthly Leave and Compensatory Leave cannot be renamed or deleted |
 
 ### Reports (dashboard)
-All take an optional `year` (defaults to the current year). The comp-off balance (`year: 0`) is included alongside the chosen year.
+All take an optional `year` (defaults to the current year). The monthly and comp-off balances (`year: 0`) are included with every year.
 
 | Method | Path | Who | Description |
 | --- | --- | --- | --- |
-| GET | `/reports/summary?year=` | HR | Active employees, pending counts (`leavePendingTeamLead`, `leavePendingHr`, `compOffPendingTeamLead`, `compOffPendingHr`), `employeesWithNegativeBalance`, `totalAllotted` / `totalUsed` / `totalRemaining` for the year |
-| GET | `/reports/leave-balance?year=&department=&leaveTypeId=` | HR | One row per employee per leave type: employee, team, lead, `totalDays`, `usedDays`, `compOffCredited`, `adjustments`, `remainingDays` |
+| GET | `/reports/summary?year=` | HR | Active employees, pending counts (`leavePendingTeamLead`, `leavePendingHr`, `compOffPendingTeamLead`, `compOffPendingHr`), `employeesWithNegativeBalance`, `totalAllotted` (monthly days added) / `totalUsed` / `totalRemaining` |
+| GET | `/reports/leave-balance?year=&department=&leaveTypeId=` | HR | One row per employee per balance: employee, team, lead, `totalDays`, `usedDays`, `compOffCredited`, `adjustments`, `remainingDays` |
 | GET | `/reports/negative-balances?year=` | HR | Balances below zero with `negativeSince` (date) |
 | GET | `/reports/departments` | HR | Department names for the filter |
 | GET | `/reports/team?year=` | Team Lead | `teamSize`, `waitingForMe`, `waitingForHr` and the team's balance rows |
@@ -303,7 +303,7 @@ src/test/java/     Spring Boot + MockMvc tests: access rules, approval workflow,
 
 ## Testing
 ```bash
-mvn test                          # all 290 tests, about a minute
+mvn test                          # all 292 tests, about a minute
 mvn test -DexcludedGroups=ui      # without the browser tests
 mvn test -Dtest=UiTests           # only the browser tests
 ```
@@ -311,13 +311,13 @@ Three levels:
 
 | Level | Where | Tests |
 | --- | --- | --- |
-| Unit: one module at a time, no database (JUnit 5, Mockito) | `src/test/java/com/leavemanagement/{util,entity,security,service}` | 163 |
-| Integration: whole app through the REST API with a real database | `src/test/java/com/leavemanagement/*Tests.java` | 114 |
+| Unit: one module at a time, no database (JUnit 5, Mockito) | `src/test/java/com/leavemanagement/{util,entity,security,service}` | 161 |
+| Integration: whole app through the REST API with a real database | `src/test/java/com/leavemanagement/*Tests.java` | 118 |
 | UI: a real headless browser clicking through the pages as each role (Selenium) | `src/test/java/com/leavemanagement/ui/UiTests.java` | 13 |
 
 The UI tests use Microsoft Edge, or Google Chrome when Edge's driver cannot be downloaded; with neither available they are skipped. They save a screenshot per scenario to `target/ui-screenshots`.
 
-Integration tests use a temporary SQLite file under `target/` and a fake mail sender (`RecordingMailSender`, so no real email is sent) and cover login (form and API, token cookie, Bearer tokens, altered tokens, logout and password changes cancelling tokens), CSRF, the forced password change, each access rule (own data, own team, HR-only actions), the two-level approval workflow (routing, HR approving for an absent lead, rejections, cancelling, queues, history), Lab Head approval of HR staff (either approver is final, other HR users refused, creating HR staff, the renamed role), half-day leave, negative balances, comp-off, HR adjustments, the ledger adding up to the balance, the dashboard reports (totals, filters, comp-off vs adjustments, negative-balance dates, Team Lead scope), the Excel exports (each file is opened and its rows checked; HR only; download with the login cookie), and that every page renders for each role.
+Integration tests use a temporary SQLite file under `target/` and a fake mail sender (`RecordingMailSender`, so no real email is sent) and cover login (form and API, token cookie, Bearer tokens, altered tokens, logout and password changes cancelling tokens), CSRF, the forced password change, each access rule (own data, own team, HR-only actions), the two-level approval workflow (routing, HR approving for an absent lead, rejections, cancelling, queues, history), Lab Head approval of HR staff (either approver is final, other HR users refused, creating HR staff, the renamed role), half-day leave, monthly leave (carry-over, each month once, inactive employees skipped, inactive months skipped on reactivation), negative balances, comp-off, HR adjustments, the ledger adding up to the balance, the dashboard reports (totals, filters, comp-off vs adjustments, negative-balance dates, Team Lead scope), the Excel exports (each file is opened and its rows checked; HR only; download with the login cookie), and that every page renders for each role.
 
 ## Known limitations
 - An approved comp-off credit cannot be cancelled directly; HR corrects it with a negative balance adjustment.

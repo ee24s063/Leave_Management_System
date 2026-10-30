@@ -40,7 +40,7 @@ class ReportServiceTest {
 
     @BeforeEach
     void setUp() {
-        when(ledger.sumDaysByEmployee(TransactionType.COMP_OFF_CREDIT)).thenReturn(new ArrayList<>());
+        when(ledger.sumDaysByEmployeeAndLeaveType(TransactionType.COMP_OFF_CREDIT)).thenReturn(new ArrayList<>());
     }
 
     static BalanceSnapshot snapshot(int leaveTypeId, int year, String total, String used, String adjusted) {
@@ -59,11 +59,11 @@ class ReportServiceTest {
     @Test
     void compOffBalanceSplitsCreditsFromHrAdjustments() {
         when(balances.findSnapshots(YEAR, null, null, null)).thenReturn(List.of(
-                snapshot(CASUAL, YEAR, "12", "2", "-1"),
+                snapshot(CASUAL, 0, "12", "2", "-1"),     // the monthly balance also has no year
                 snapshot(COMP_OFF, 0, "0", "1", "3")));
         List<Object[]> credits = new ArrayList<>();
-        credits.add(new Object[]{MIA, new BigDecimal("2")});
-        when(ledger.sumDaysByEmployee(TransactionType.COMP_OFF_CREDIT)).thenReturn(credits);
+        credits.add(new Object[]{MIA, COMP_OFF, new BigDecimal("2")});
+        when(ledger.sumDaysByEmployeeAndLeaveType(TransactionType.COMP_OFF_CREDIT)).thenReturn(credits);
 
         List<BalanceReportRow> rows = service.getLeaveBalances(YEAR, null, null);
 
@@ -84,8 +84,8 @@ class ReportServiceTest {
     void creditSumsReturnedAsDoublesAreAccepted() {
         when(balances.findSnapshots(YEAR, null, null, null)).thenReturn(List.of(snapshot(COMP_OFF, 0, "0", "0", "1.5")));
         List<Object[]> credits = new ArrayList<>();
-        credits.add(new Object[]{MIA, 1.5d}); // SQLite may hand back a double
-        when(ledger.sumDaysByEmployee(TransactionType.COMP_OFF_CREDIT)).thenReturn(credits);
+        credits.add(new Object[]{MIA, COMP_OFF, 1.5d}); // SQLite may hand back a double
+        when(ledger.sumDaysByEmployeeAndLeaveType(TransactionType.COMP_OFF_CREDIT)).thenReturn(credits);
         assertThat(service.getLeaveBalances(YEAR, null, null).get(0).compOffCredited()).isEqualByComparingTo("1.5");
     }
 

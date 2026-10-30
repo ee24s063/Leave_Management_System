@@ -55,11 +55,10 @@ public class LeaveTypeController {
         if (leaveType.getLeaveTypeName() == null || leaveType.getLeaveTypeName().isBlank()) {
             throw new IllegalArgumentException("Leave type name cannot be empty");
         }
-        if (leaveType.getMaxDaysPerYear() == null || leaveType.getMaxDaysPerYear() < 0) {
-            throw new IllegalArgumentException("Max days per year must be 0 or more");
-        }
         leaveType.setLeaveTypeId(null);
         leaveType.setSystemCode(null);
+        // Days come from the shared monthly balance, not from a yearly maximum per type
+        leaveType.setMaxDaysPerYear(0);
         leaveType.setLeaveTypeName(leaveType.getLeaveTypeName().trim());
         if (leaveTypeRepository.findByLeaveTypeName(leaveType.getLeaveTypeName()).isPresent()) {
             throw new IllegalStateException("A leave type with this name already exists");
@@ -83,9 +82,6 @@ public class LeaveTypeController {
                 LeaveType leaveType = existingType.get();
                 if (leaveTypeDetails.getLeaveTypeName() != null) {
                     leaveType.setLeaveTypeName(leaveTypeDetails.getLeaveTypeName());
-                }
-                if (leaveTypeDetails.getMaxDaysPerYear() != null) {
-                    leaveType.setMaxDaysPerYear(leaveTypeDetails.getMaxDaysPerYear());
                 }
                 if (leaveTypeDetails.getDescription() != null) {
                     leaveType.setDescription(leaveTypeDetails.getDescription());

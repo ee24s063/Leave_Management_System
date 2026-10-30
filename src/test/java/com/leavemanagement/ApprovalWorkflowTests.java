@@ -65,7 +65,7 @@ class ApprovalWorkflowTests {
 
         casual = leaveTypeRepository.save(new LeaveType(null, "Casual Leave", 12, null, null));
         for (Employee e : new Employee[]{lead, member, solo}) {
-            leaveBalanceRepository.save(new LeaveBalance(null, e.getEmployeeId(), casual.getLeaveTypeId(), new BigDecimal("12"), BigDecimal.ZERO, BigDecimal.ZERO, year));
+            leaveBalanceRepository.save(new LeaveBalance(null, e.getEmployeeId(), monthly(), new BigDecimal("12"), BigDecimal.ZERO, BigDecimal.ZERO, LeaveBalance.NO_YEAR));
         }
     }
 
@@ -283,7 +283,7 @@ class ApprovalWorkflowTests {
 
     private LeaveBalance balanceOf(Employee e) {
         return leaveBalanceRepository
-                .findByEmployeeIdAndLeaveTypeIdAndYear(e.getEmployeeId(), casual.getLeaveTypeId(), year).orElseThrow();
+                .findByEmployeeIdAndLeaveTypeIdAndYear(e.getEmployeeId(), monthly(), LeaveBalance.NO_YEAR).orElseThrow();
     }
 
     private RequestPostProcessor as(UserAccount account) {
@@ -313,5 +313,10 @@ class ApprovalWorkflowTests {
         a.setEnabled(true);
         a.setMustChangePassword(false);
         return userAccountRepository.save(a);
+    }
+
+    // The shared monthly balance every leave type except comp-off uses
+    private Integer monthly() {
+        return leaveTypeRepository.findBySystemCode("MONTHLY").orElseThrow().getLeaveTypeId();
     }
 }

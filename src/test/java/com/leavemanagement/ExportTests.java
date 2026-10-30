@@ -3,6 +3,7 @@ package com.leavemanagement;
 import com.leavemanagement.entity.*;
 import com.leavemanagement.repository.*;
 import com.leavemanagement.security.AppUserDetails;
+import com.leavemanagement.service.LeaveService;
 import jakarta.servlet.http.Cookie;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
@@ -20,8 +21,10 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.io.ByteArrayInputStream;
 import java.time.LocalDate;
+import java.time.YearMonth;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -49,10 +52,11 @@ class ExportTests {
     @Autowired UserAccountRepository userAccountRepository;
     @Autowired LeaveTypeRepository leaveTypeRepository;
     @Autowired PasswordEncoder passwordEncoder;
+    @Autowired LeaveService leaveService;
 
     UserAccount hrAccount, leadAccount, memberAccount, soloAccount;
     Employee hr, lead, member, solo;
-    LeaveType casual, sick;
+    LeaveType casual, sick, monthly;
     LocalDate start = LocalDate.now().plusDays(10);
     int year = start.getYear();
 
@@ -67,11 +71,11 @@ class ExportTests {
         solo = employee("Sam", "solo@test.com", "Sales", null);
         soloAccount = account(solo, Role.EMPLOYEE);
 
-        casual = leaveTypeRepository.save(new LeaveType(null, "Casual Leave", 12, null, null));
-        sick = leaveTypeRepository.save(new LeaveType(null, "Sick Leave", 10, null, null));
-        createBalance(member, casual, "12");
-        createBalance(solo, casual, "12");
-        createBalance(solo, sick, "1");
+        casual = leaveTypeRepository.save(new LeaveType(null, "Casual Leave", 0, null, null));
+        sick = leaveTypeRepository.save(new LeaveType(null, "Sick Leave", 0, null, null));
+        monthly = leaveTypeRepository.findBySystemCode("MONTHLY").orElseThrow();
+        giveMonthlyDays(member, "12");
+        giveMonthlyDays(solo, "13");
     }
 
     @Test
@@ -87,27 +91,28 @@ class ExportTests {
         List<List<String>> rows = read(response);
         assertThat(rows.get(0)).startsWith("Employee ID", "Employee", "Team", "Lead");
         assertThat(rows.get(0)).endsWith("Remaining");
-        assertThat(rows).hasSize(1 + 3 + 1); // header, 3 balances, totals
-        assertThat(rows.get(1)).contains("Mia Test", "IT", "Lee Test", "Casual Leave", "12");
-        assertThat(rows.get(4).get(0)).isEqualTo("Total");
-        assertThat(rows.get(4).get(7)).isEqualTo("25"); // allotted 12 + 12 + 1
+        assertThat(rows).hasSize(1 + 2 + 1); // header, 2 monthly balances, totals
+        assertThat(rows.get(1)).contains("Mia Test", "IT", "Lee Test", "Monthly Leave", "12");
+        assertThat(rows.get(3).get(0)).isEqualTo("Total");
+        assertThat(rows.get(3).get(7)).isEqualTo("25"); // monthly days added 12 + 13
     }
 
     @Test
     void leaveBalanceExportUsesTheDashboardFilters() throws Exception {
         List<List<String>> rows = read(mockMvc.perform(get("/api/reports/leave-balance/export?year=%d&department=Sales&leaveTypeId=%d"
-                        .formatted(year, sick.getLeaveTypeId())).with(as(hrAccount)))
+                        .formatted(year, monthly.getLeaveTypeId())).with(as(hrAccount)))
                 .andExpect(header().string("Content-Disposition", containsString("leave-balance-" + year + "-sales-type")))
                 .andReturn().getResponse());
         assertThat(rows).hasSize(3);
-        assertThat(rows.get(1)).contains("Sam Test", "Sick Leave");
+        assertThat(rows.get(1)).contains("Sam Test", "Monthly Leave");
     }
 
     @Test
     void negativeBalancesAreSortedMostNegativeFirst() throws Exception {
-        approve(submitLeave(soloAccount, sick, start, start.plusDays(2)), hrAccount);           // sick: 1 - 3 = -2
-        approve(submitLeave(soloAccount, casual, start.plusDays(5), start.plusDays(5)), hrAccount);
-        adjust(member, casual, "-17");                                                        // casual: 12 - 17 = -5
+        adjust(solo, monthly, "-11");                                                         // 13 - 11 = 2
+        approve(submitLeave(soloAccount, sick, start, start.plusDays(2)), hrAccount);           // 2 - 3 = -1
+        approve(submitLeave(soloAccount, casual, start.plusDays(5), start.plusDays(5)), hrAccount); // -1 - 1 = -2
+        adjust(member, monthly, "-17");                                                       // 12 - 17 = -5
 
         List<List<String>> rows = read(mockMvc.perform(get("/api/reports/negative-balances/export?year=" + year)
                 .with(as(hrAccount))).andReturn().getResponse());
@@ -157,8 +162,9 @@ class ExportTests {
                 .andExpect(header().string("Content-Disposition", containsString("balance-history-" + solo.getEmployeeId() + "-sam-test")))
                 .andReturn().getResponse());
         assertThat(rows.get(0)).containsExactly("Date", "Leave type", "Year", "Change", "Days", "Details", "Request ID", "By");
-        assertThat(rows).hasSize(4); // 2 allotments + 1 leave taken
-        assertThat(rows.get(3)).contains("Casual Leave", "Leave taken", "-1");
+        assertThat(rows).hasSize(3); // monthly leave added + 1 leave taken
+        assertThat(rows.get(1)).contains("Monthly Leave", "Monthly leave added", "13");
+        assertThat(rows.get(2)).contains("Monthly Leave", "Leave taken", "-1", "Casual Leave approved");
     }
 
     @Test
@@ -231,10 +237,8 @@ class ExportTests {
         }
     }
 
-    private void createBalance(Employee e, LeaveType type, String days) throws Exception {
-        mockMvc.perform(post("/api/leave-balance?employeeId=%d&leaveTypeId=%d&totalDays=%s&year=%d"
-                        .formatted(e.getEmployeeId(), type.getLeaveTypeId(), days, year)).with(as(hrAccount)).with(csrf()))
-                .andExpect(status().isCreated());
+    private void giveMonthlyDays(Employee e, String days) {
+        leaveService.creditMonth(e.getEmployeeId(), YearMonth.now(), new BigDecimal(days));
     }
 
     private int submitLeave(UserAccount account, LeaveType type, LocalDate from, LocalDate to) throws Exception {

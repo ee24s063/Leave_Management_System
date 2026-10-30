@@ -3,6 +3,7 @@ package com.leavemanagement;
 import com.leavemanagement.entity.*;
 import com.leavemanagement.repository.*;
 import com.leavemanagement.security.AppUserDetails;
+import com.leavemanagement.service.LeaveService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -16,8 +17,10 @@ import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
+import java.time.YearMonth;
 import java.time.temporal.TemporalAdjusters;
 
 import static org.hamcrest.Matchers.hasSize;
@@ -43,10 +46,11 @@ class ReportTests {
     @Autowired UserAccountRepository userAccountRepository;
     @Autowired LeaveTypeRepository leaveTypeRepository;
     @Autowired PasswordEncoder passwordEncoder;
+    @Autowired LeaveService leaveService;
 
     UserAccount hrAccount, leadAccount, memberAccount, soloAccount;
     Employee hr, lead, member, solo;
-    LeaveType casual, sick;
+    LeaveType casual, sick, monthly;
     LocalDate start = LocalDate.now().plusDays(10);
     int year = start.getYear();
     LocalDate lastSaturday = LocalDate.now().minusDays(1).with(TemporalAdjusters.previousOrSame(DayOfWeek.SATURDAY));
@@ -62,11 +66,11 @@ class ReportTests {
         solo = employee("Sam", "solo@test.com", "Sales", null);
         soloAccount = account(solo, Role.EMPLOYEE);
 
-        casual = leaveTypeRepository.save(new LeaveType(null, "Casual Leave", 12, null, null));
-        sick = leaveTypeRepository.save(new LeaveType(null, "Sick Leave", 10, null, null));
-        createBalance(member, casual, "12").andExpect(status().isCreated());
-        createBalance(solo, casual, "12").andExpect(status().isCreated());
-        createBalance(solo, sick, "1").andExpect(status().isCreated());
+        casual = leaveTypeRepository.save(new LeaveType(null, "Casual Leave", 0, null, null));
+        sick = leaveTypeRepository.save(new LeaveType(null, "Sick Leave", 0, null, null));
+        monthly = leaveTypeRepository.findBySystemCode("MONTHLY").orElseThrow();
+        giveMonthlyDays(member, "12");
+        giveMonthlyDays(solo, "13");
     }
 
     @Test
@@ -90,17 +94,18 @@ class ReportTests {
     }
 
     @Test
-    void summaryOfAYearWithoutBalancesIsZero() throws Exception {
+    void balancesHaveNoYearSoEveryYearShowsThem() throws Exception {
         mockMvc.perform(get("/api/reports/summary?year=1999").with(as(hrAccount)))
-                .andExpect(jsonPath("$.totalAllotted").value(0))
-                .andExpect(jsonPath("$.totalRemaining").value(0));
+                .andExpect(jsonPath("$.totalAllotted").value(25))
+                .andExpect(jsonPath("$.totalRemaining").value(25));
     }
 
     @Test
-    void balanceReportListsEachEmployeeAndLeaveType() throws Exception {
+    void balanceReportListsEachEmployeesMonthlyBalance() throws Exception {
         mockMvc.perform(get("/api/reports/leave-balance?year=" + year).with(as(hrAccount)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$", hasSize(3)))
+                .andExpect(jsonPath("$", hasSize(2)))
+                .andExpect(jsonPath("$[0].leaveTypeName").value("Monthly Leave"))
                 .andExpect(jsonPath("$[0].employeeName").value("Mia Test"))
                 .andExpect(jsonPath("$[0].leadName").value("Lee Test"))
                 .andExpect(jsonPath("$[0].department").value("IT"))
@@ -112,12 +117,14 @@ class ReportTests {
     @Test
     void balanceReportFiltersByDepartmentAndLeaveType() throws Exception {
         mockMvc.perform(get("/api/reports/leave-balance?year=%d&department=Sales".formatted(year)).with(as(hrAccount)))
-                .andExpect(jsonPath("$", hasSize(2)))
-                .andExpect(jsonPath("$[*].employeeName", contains("Sam Test", "Sam Test")));
+                .andExpect(jsonPath("$", hasSize(1)))
+                .andExpect(jsonPath("$[*].employeeName", contains("Sam Test")));
+        mockMvc.perform(get("/api/reports/leave-balance?year=%d&leaveTypeId=%d".formatted(year, monthly.getLeaveTypeId()))
+                        .with(as(hrAccount)))
+                .andExpect(jsonPath("$", hasSize(2)));
         mockMvc.perform(get("/api/reports/leave-balance?year=%d&leaveTypeId=%d".formatted(year, sick.getLeaveTypeId()))
                         .with(as(hrAccount)))
-                .andExpect(jsonPath("$", hasSize(1)))
-                .andExpect(jsonPath("$[0].leaveTypeName").value("Sick Leave"));
+                .andExpect(jsonPath("$", hasSize(0))); // no balance of its own: sick leave uses the monthly balance
     }
 
     @Test
@@ -125,28 +132,29 @@ class ReportTests {
         int id = submitCompOff(memberAccount);
         approve("comp-off", id, leadAccount);
         approve("comp-off", id, hrAccount);
-        adjust(member, casual, "-2", "Unpaid absence");
+        adjust(member, monthly, "-2", "Unpaid absence");
 
         mockMvc.perform(get("/api/reports/leave-balance?year=" + year).with(as(hrAccount)))
-                .andExpect(jsonPath("$[?(@.employeeName == 'Mia Test' && @.year == 0)].compOffCredited", contains(1)))
-                .andExpect(jsonPath("$[?(@.employeeName == 'Mia Test' && @.year == 0)].remainingDays", contains(1)))
-                .andExpect(jsonPath("$[?(@.employeeName == 'Mia Test' && @.leaveTypeName == 'Casual Leave')].adjustments",
+                .andExpect(jsonPath("$[?(@.employeeName == 'Mia Test' && @.leaveTypeName == 'Compensatory Leave')].compOffCredited", contains(1)))
+                .andExpect(jsonPath("$[?(@.employeeName == 'Mia Test' && @.leaveTypeName == 'Compensatory Leave')].remainingDays", contains(1)))
+                .andExpect(jsonPath("$[?(@.employeeName == 'Mia Test' && @.leaveTypeName == 'Monthly Leave')].adjustments",
                         contains(-2)))
-                .andExpect(jsonPath("$[?(@.employeeName == 'Mia Test' && @.leaveTypeName == 'Casual Leave')].compOffCredited",
+                .andExpect(jsonPath("$[?(@.employeeName == 'Mia Test' && @.leaveTypeName == 'Monthly Leave')].compOffCredited",
                         contains(0)))
-                .andExpect(jsonPath("$[?(@.employeeName == 'Mia Test' && @.leaveTypeName == 'Casual Leave')].remainingDays",
+                .andExpect(jsonPath("$[?(@.employeeName == 'Mia Test' && @.leaveTypeName == 'Monthly Leave')].remainingDays",
                         contains(10)));
     }
 
     @Test
     void negativeBalancesShowWhenTheyWentBelowZero() throws Exception {
+        adjust(solo, monthly, "-12", "Leave taken before the system went live");   // 1 day left
         int id = submitLeave(soloAccount, sick, start, start.plusDays(2));
         approve("leave-requests", id, hrAccount);
 
         mockMvc.perform(get("/api/reports/negative-balances?year=" + year).with(as(hrAccount)))
                 .andExpect(jsonPath("$", hasSize(1)))
                 .andExpect(jsonPath("$[0].employeeName").value("Sam Test"))
-                .andExpect(jsonPath("$[0].leaveTypeName").value("Sick Leave"))
+                .andExpect(jsonPath("$[0].leaveTypeName").value("Monthly Leave"))
                 .andExpect(jsonPath("$[0].remainingDays").value(-2))
                 .andExpect(jsonPath("$[0].negativeSince").value(LocalDate.now().toString()));
         mockMvc.perform(get("/api/reports/summary?year=" + year).with(as(hrAccount)))
@@ -198,9 +206,8 @@ class ReportTests {
 
     // --- Helpers ---
 
-    private ResultActions createBalance(Employee e, LeaveType type, String days) throws Exception {
-        return mockMvc.perform(post("/api/leave-balance?employeeId=%d&leaveTypeId=%d&totalDays=%s&year=%d"
-                .formatted(e.getEmployeeId(), type.getLeaveTypeId(), days, year)).with(as(hrAccount)).with(csrf()));
+    private void giveMonthlyDays(Employee e, String days) {
+        leaveService.creditMonth(e.getEmployeeId(), YearMonth.now(), new BigDecimal(days));
     }
 
     private int submitLeave(UserAccount account, LeaveType type, LocalDate from, LocalDate to) throws Exception {

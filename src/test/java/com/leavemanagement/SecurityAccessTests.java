@@ -67,7 +67,7 @@ class SecurityAccessTests {
         casual = new LeaveType(null, "Casual Leave", 12, null, null);
         casual = leaveTypeRepository.save(casual);
         for (Employee e : new Employee[]{lead, member, other}) {
-            leaveBalanceRepository.save(new LeaveBalance(null, e.getEmployeeId(), casual.getLeaveTypeId(), new BigDecimal("12"), BigDecimal.ZERO, BigDecimal.ZERO, year));
+            leaveBalanceRepository.save(new LeaveBalance(null, e.getEmployeeId(), monthly(), new BigDecimal("12"), BigDecimal.ZERO, BigDecimal.ZERO, LeaveBalance.NO_YEAR));
         }
         memberRequest = request(member);
         otherRequest = request(other);
@@ -345,18 +345,14 @@ class SecurityAccessTests {
     }
 
     @Test
-    void onlyHrCreatesBalances() throws Exception {
-        String url = "/api/leave-balance?employeeId=%d&leaveTypeId=%d&totalDays=5&year=%d"
-                .formatted(other.getEmployeeId(), casual.getLeaveTypeId(), year + 1);
-        mockMvc.perform(post(url).with(as(leadAccount)).with(csrf())).andExpect(status().isForbidden());
-        mockMvc.perform(post(url).with(as(hrAccount)).with(csrf())).andExpect(status().isCreated());
-    }
-
-    @Test
-    void duplicateBalanceIsRejected() throws Exception {
-        String url = "/api/leave-balance?employeeId=%d&leaveTypeId=%d&totalDays=5&year=%d"
-                .formatted(member.getEmployeeId(), casual.getLeaveTypeId(), year);
-        mockMvc.perform(post(url).with(as(hrAccount)).with(csrf())).andExpect(status().isConflict());
+    void onlyHrAdjustsBalances() throws Exception {
+        String body = """
+                {"employeeId":%d,"leaveTypeId":%d,"year":%d,"days":1,"reason":"Correction"}
+                """.formatted(other.getEmployeeId(), monthly(), year);
+        mockMvc.perform(post("/api/leave-balance/adjust").with(as(leadAccount)).with(csrf())
+                .contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isForbidden());
+        mockMvc.perform(post("/api/leave-balance/adjust").with(as(hrAccount)).with(csrf())
+                .contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isOk());
     }
 
     // --- Leave requests ---
@@ -549,7 +545,7 @@ class SecurityAccessTests {
 
     private LeaveBalance balanceOf(Employee e) {
         return leaveBalanceRepository
-                .findByEmployeeIdAndLeaveTypeIdAndYear(e.getEmployeeId(), casual.getLeaveTypeId(), year).orElseThrow();
+                .findByEmployeeIdAndLeaveTypeIdAndYear(e.getEmployeeId(), monthly(), LeaveBalance.NO_YEAR).orElseThrow();
     }
 
     private String approve(LeaveRequest request) {
@@ -591,5 +587,10 @@ class SecurityAccessTests {
         r.setStatus(e.getReporting_LeadId() == null ? LeaveStatus.PENDING_HR : LeaveStatus.PENDING_TL);
         r.setRequestDate(LocalDate.now());
         return leaveRequestRepository.save(r);
+    }
+
+    // The shared monthly balance every leave type except comp-off uses
+    private Integer monthly() {
+        return leaveTypeRepository.findBySystemCode("MONTHLY").orElseThrow().getLeaveTypeId();
     }
 }

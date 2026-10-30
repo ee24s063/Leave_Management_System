@@ -18,9 +18,15 @@ public interface LeaveTransactionRepository extends JpaRepository<LeaveTransacti
                                                                                                    Integer leaveTypeId,
                                                                                                    Integer year);
 
-    // Total days per employee for one kind of change, e.g. all comp-off credits; rows are [employeeId, sum]
-    @Query("SELECT t.employeeId, SUM(t.days) FROM LeaveTransaction t WHERE t.type = :type GROUP BY t.employeeId")
-    List<Object[]> sumDaysByEmployee(@Param("type") TransactionType type);
+    // Total days per employee and balance for one kind of change, e.g. all comp-off credits;
+    // rows are [employeeId, leaveTypeId, sum]
+    @Query("SELECT t.employeeId, t.leaveTypeId, SUM(t.days) FROM LeaveTransaction t WHERE t.type = :type " +
+           "GROUP BY t.employeeId, t.leaveTypeId")
+    List<Object[]> sumDaysByEmployeeAndLeaveType(@Param("type") TransactionType type);
+
+    // Latest month (yyyymm) already credited to an employee, for the monthly leave
+    @Query("SELECT MAX(t.referenceId) FROM LeaveTransaction t WHERE t.employeeId = :employeeId AND t.type = :type")
+    Integer findLatestReference(@Param("employeeId") Integer employeeId, @Param("type") TransactionType type);
 
     // Used when an employee is deleted permanently
     long deleteByEmployeeId(Integer employeeId);

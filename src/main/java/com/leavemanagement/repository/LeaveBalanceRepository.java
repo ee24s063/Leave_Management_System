@@ -24,7 +24,7 @@ public interface LeaveBalanceRepository extends JpaRepository<LeaveBalance, Inte
 
     List<LeaveBalance> findByEmployeeId(Integer employeeId);
 
-    // --- Reports (Phase 4). Year 0 (the comp-off balance) is always included alongside the requested year. ---
+    // --- Reports (Phase 4). Year 0 (the monthly and comp-off balances) is always included alongside the requested year. ---
 
     String SNAPSHOT_SELECT = "SELECT new com.leavemanagement.dto.BalanceSnapshot(e.employeeId, e.firstName, e.lastName, " +
             "e.department, e.status, lead.firstName, lead.lastName, lt.leaveTypeId, lt.leaveTypeName, b.year, " +
@@ -53,6 +53,6 @@ public interface LeaveBalanceRepository extends JpaRepository<LeaveBalance, Inte
     long countEmployeesWithNegativeBalance(@Param("year") Integer year);
 
     @Query("SELECT new com.leavemanagement.dto.BalanceTotals(SUM(b.totalDaysAllowed), SUM(b.usedDays), " +
-           "SUM(b.totalDaysAllowed + b.adjustedDays - b.usedDays)) FROM LeaveBalance b WHERE b.year = :year")
+           "SUM(b.totalDaysAllowed + b.adjustedDays - b.usedDays)) FROM LeaveBalance b WHERE b.year IN (:year, 0)")
     BalanceTotals sumForYear(@Param("year") Integer year);
 }

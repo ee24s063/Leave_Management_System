@@ -21,13 +21,14 @@ public class LeaveType {
     @Column(nullable = false, unique = true)
     private String leaveTypeName;
 
+    // No longer used (leave comes from the shared monthly balance); kept at 0
     @Column(nullable = false)
-    private Integer maxDaysPerYear;
+    private Integer maxDaysPerYear = 0;
 
     @Column(length = 500)
     private String description;
 
-    // Set for built-in types the application relies on (COMP_OFF); these cannot be renamed or deleted
+    // Set for built-in types the application relies on (COMP_OFF, MONTHLY); these cannot be renamed or deleted
     @Column(length = 20, unique = true)
     private String systemCode;
 

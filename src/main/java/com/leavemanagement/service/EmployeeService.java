@@ -38,10 +38,12 @@ public class EmployeeService {
     private final PasswordEncoder passwordEncoder;
     private final RoleNames roleNames;
     private final MailService mailService;
+    private final LeaveAccrualService leaveAccrualService;
 
     /**
      * Create an employee and their login account (username = email) with a temporary password, which is emailed
-     * to them and never shown. If the email cannot be sent, nothing is saved.
+     * to them and never shown. If the email cannot be sent, nothing is saved. The employee starts with
+     * this month's monthly leave.
      */
     public CreatedEmployeeResponse createEmployee(CreateEmployeeRequest req) {
         String email = req.email().trim();
@@ -80,6 +82,7 @@ public class EmployeeService {
         account.setEnabled(true);
         account.setMustChangePassword(true);
         userAccountRepository.save(account);
+        leaveAccrualService.creditFirstMonth(employee.getEmployeeId());
         mailService.sendTemporaryPassword(email, employee.getFullName(), email, temporaryPassword, false);
 
         return new CreatedEmployeeResponse(toView(employee, true), email, email);
@@ -139,7 +142,9 @@ public class EmployeeService {
             employee.setHeadApproverId(null);
         }
 
+        boolean reactivated = false;
         if (req.status() != null) {
+            reactivated = employee.getStatus() != EmployeeStatus.ACTIVE && req.status() == EmployeeStatus.ACTIVE;
             employee.setStatus(req.status());
             if (account != null) account.setEnabled(req.status() == EmployeeStatus.ACTIVE);
         }
@@ -157,7 +162,9 @@ public class EmployeeService {
         }
 
         if (account != null) userAccountRepository.save(account);
-        return employeeRepository.save(employee);
+        Employee saved = employeeRepository.save(employee);
+        if (reactivated) leaveAccrualService.creditOnReactivation(employeeId); // inactive months are skipped
+        return saved;
     }
 
     /**

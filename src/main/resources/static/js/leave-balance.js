@@ -1,10 +1,11 @@
 // Leave Balance JavaScript
-// Employees see their own balance, Team Leads also their reports', HR everyone's and can set balances up.
+// Employees see their own balance, Team Leads also their reports', HR everyone's and can adjust them and add leave types.
 
 let leaveTypeNames = {};
 
 const TRANSACTION_LABELS = {
     ALLOCATION: 'Allotted',
+    MONTHLY_CREDIT: 'Monthly leave added',
     LEAVE_DEDUCTED: 'Leave taken',
     LEAVE_RESTORED: 'Leave cancelled',
     COMP_OFF_CREDIT: 'Comp-off credited',
@@ -24,8 +25,6 @@ document.addEventListener('DOMContentLoaded', async function() {
 
     const isHr = me.role === 'HR_ADMIN';
     if (isHr) {
-        document.getElementById('balanceYear').value = year;
-        document.getElementById('createBalanceForm').addEventListener('submit', createLeaveBalance);
         document.getElementById('leaveTypeForm').addEventListener('submit', addLeaveType);
         document.getElementById('adjustForm').addEventListener('submit', adjustBalance);
     }
@@ -60,20 +59,15 @@ async function loadEmployeeOptions(me) {
         document.getElementById('yearBalance').value = params.get('year');
     }
 
-    const createSelect = document.getElementById('createEmployeeId');
-    if (createSelect) {
-        createSelect.innerHTML = '<option value="">Select Employee</option>' + options;
-    }
 }
 
 async function loadLeaveTypes() {
-    const types = await loadLeaveTypeOptions('createLeaveTypeId');
-    await loadLeaveTypeOptions('adjustLeaveTypeId');
-    // Comp-off days are credited, not allotted
-    const createSelect = document.getElementById('createLeaveTypeId');
-    if (createSelect) {
-        types.filter(t => t.systemCode === 'COMP_OFF').forEach(t => {
-            const option = createSelect.querySelector(`option[value="${t.leaveTypeId}"]`);
+    const types = await loadLeaveTypeOptions('adjustLeaveTypeId');
+    // Only the two balances can be adjusted: monthly leave (used by every other type) and comp-off
+    const adjustSelect = document.getElementById('adjustLeaveTypeId');
+    if (adjustSelect) {
+        types.filter(t => !t.systemCode).forEach(t => {
+            const option = adjustSelect.querySelector(`option[value="${t.leaveTypeId}"]`);
             if (option) option.remove();
         });
     }
@@ -81,12 +75,11 @@ async function loadLeaveTypes() {
     const tbody = document.getElementById('leaveTypesList');
     if (tbody) {
         tbody.innerHTML = types.length === 0
-            ? '<tr><td colspan="4" class="text-center">No leave types yet. Add one above.</td></tr>'
+            ? '<tr><td colspan="3" class="text-center">No leave types yet. Add one above.</td></tr>'
             : types.map(t => `
                 <tr>
                     <td>${t.leaveTypeId}</td>
                     <td>${escapeHtml(t.leaveTypeName)}${t.systemCode ? ' <span class="badge bg-secondary">built-in</span>' : ''}</td>
-                    <td>${t.maxDaysPerYear}</td>
                     <td>${escapeHtml(t.description || '')}</td>
                 </tr>`).join('');
     }
@@ -138,7 +131,7 @@ function displayLeaveBalance(balances) {
     tbody.innerHTML = '';
 
     if (balances.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" class="text-center">No leave balance found</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="5" class="text-center">No leave balance found</td></tr>';
         return;
     }
 
@@ -150,7 +143,6 @@ function displayLeaveBalance(balances) {
 
         row.innerHTML = `
             <td>${escapeHtml(leaveTypeNames[balance.leaveTypeId] || balance.leaveTypeId)}</td>
-            <td>${balance.year === 0 ? '<span class="text-muted">no expiry</span>' : balance.year}</td>
             <td>${formatDays(balance.totalDaysAllowed)}</td>
             <td>${Number(balance.adjustedDays) > 0 ? '+' : ''}${formatDays(balance.adjustedDays)}</td>
             <td>${formatDays(balance.usedDays)}</td>
@@ -169,32 +161,6 @@ function displayLeaveBalance(balances) {
     });
 }
 
-// Create leave balance (HR)
-async function createLeaveBalance(e) {
-    e.preventDefault();
-
-    const employeeId = document.getElementById('createEmployeeId').value;
-    const leaveTypeId = document.getElementById('createLeaveTypeId').value;
-    const totalDays = document.getElementById('totalDays').value;
-    const year = document.getElementById('balanceYear').value;
-
-    if (!employeeId || !leaveTypeId || !totalDays || !year) {
-        showAlert('Please fill all fields', 'warning');
-        return;
-    }
-
-    const url = `/leave-balance?employeeId=${employeeId}&leaveTypeId=${leaveTypeId}&totalDays=${totalDays}&year=${year}`;
-
-    const result = await apiCall(url, 'POST');
-    if (result) {
-        showAlert('Leave balance created successfully!', 'success');
-        document.getElementById('totalDays').value = '';
-        if (document.getElementById('employeeIdBalance').value === employeeId) {
-            loadLeaveBalance();
-        }
-    }
-}
-
 // Download the selected employee's balance history for the selected year as Excel (HR)
 function exportLedger() {
     const employeeId = document.getElementById('employeeIdBalance').value;
@@ -206,25 +172,7 @@ function exportLedger() {
     window.location.href = `${API_BASE_URL}/reports/transactions/export?employeeId=${employeeId}&year=${year}`;
 }
 
-// Reset the selected employee's balance for the selected year (HR)
-function resetYearlyBalance() {
-    const select = document.getElementById('employeeIdBalance');
-    const employeeId = select.value;
-    const year = document.getElementById('yearBalance').value;
-    if (!employeeId || !year) return;
-    const name = select.options[select.selectedIndex].text;
-    if (!confirm(`Reset used days to 0 for ${name} in ${year}?`)) return;
-
-    apiCall(`/leave-balance/reset-yearly?employeeId=${employeeId}&year=${year}`, 'POST')
-        .then(data => {
-            if (data) {
-                showAlert('Leave balance reset successfully!', 'success');
-                loadLeaveBalance();
-            }
-        });
-}
-
-// Add or remove days for the selected employee and year (HR)
+// Add or remove days for the selected employee (HR)
 async function adjustBalance(e) {
     e.preventDefault();
     const select = document.getElementById('employeeIdBalance');
@@ -256,7 +204,6 @@ async function addLeaveType(e) {
     e.preventDefault();
     const result = await apiCall('/leave-types', 'POST', {
         leaveTypeName: document.getElementById('leaveTypeName').value.trim(),
-        maxDaysPerYear: parseInt(document.getElementById('maxDaysPerYear').value),
         description: document.getElementById('leaveTypeDescription').value.trim() || null
     });
     if (result) {

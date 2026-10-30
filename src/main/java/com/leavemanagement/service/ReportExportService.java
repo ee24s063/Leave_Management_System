@@ -43,7 +43,8 @@ public class ReportExportService {
             TransactionType.LEAVE_RESTORED, "Leave cancelled",
             TransactionType.COMP_OFF_CREDIT, "Comp-off credited",
             TransactionType.ADJUSTMENT, "HR adjustment",
-            TransactionType.RESET, "Yearly reset");
+            TransactionType.RESET, "Yearly reset",
+            TransactionType.MONTHLY_CREDIT, "Monthly leave added");
 
     private static final Map<LeaveStatus, String> STATUS_LABELS = Map.of(
             LeaveStatus.PENDING_TL, "Waiting for Team Lead",
@@ -68,7 +69,7 @@ public class ReportExportService {
         String suffix = (department == null ? "" : "-" + safe(department))
                 + (leaveTypeId == null ? "" : "-type" + leaveTypeId);
         return file("leave-balance-" + year + suffix, "Leave balance " + year, List.of(
-                "Employee ID", "Employee", "Team", "Lead", "Status", "Leave type", "Year", "Allotted", "Used",
+                "Employee ID", "Employee", "Team", "Lead", "Status", "Leave type", "Year", "Monthly added", "Used",
                 "Comp-off credited", "Adjustments", "Remaining"), rows, totals);
     }
 

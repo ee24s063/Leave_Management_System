@@ -16,6 +16,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.time.YearMonth;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.Optional;
@@ -24,15 +26,20 @@ import java.util.Optional;
  * Leave balances and their ledger. Every balance change goes through this class and writes one
  * LeaveTransaction, so the ledger always adds up to the balance.
  *
- * Balances may go below zero (no lower limit). The comp-off balance does not belong to a year:
- * it is stored with year = 0 and is used whatever year the leave falls in, so credits never expire.
+ * Each employee has two balances, neither tied to a year (stored with year = 0, never reset):
+ * - the monthly leave balance (built-in MONTHLY type): days are added every month (LeaveAccrualService)
+ *   and every leave type except comp-off takes its days from it, so unused days carry over;
+ * - the comp-off balance (built-in COMP_OFF type): credited by approved comp-off requests, never expires.
+ * Balances may go below zero (no lower limit).
  */
 @Service
 @RequiredArgsConstructor
 @Transactional
 public class LeaveService {
     public static final String COMP_OFF_CODE = "COMP_OFF";
+    public static final String MONTHLY_CODE = "MONTHLY";
     private static final BigDecimal HALF = new BigDecimal("0.5");
+    private static final DateTimeFormatter MONTH_NAME = DateTimeFormatter.ofPattern("MMMM yyyy");
 
     private final LeaveBalanceRepository leaveBalanceRepository;
     private final LeaveTransactionRepository leaveTransactionRepository;
@@ -48,23 +55,31 @@ public class LeaveService {
                 .orElseThrow(() -> new IllegalStateException("The Compensatory Leave type is missing"));
     }
 
+    /**
+     * The built-in Monthly Leave type: the shared balance all other leave types take their days from
+     */
+    public LeaveType getMonthlyLeaveType() {
+        return leaveTypeRepository.findBySystemCode(MONTHLY_CODE)
+                .orElseThrow(() -> new IllegalStateException("The Monthly Leave type is missing"));
+    }
+
     public boolean isCompOff(Integer leaveTypeId) {
         return leaveTypeRepository.findById(leaveTypeId).map(t -> COMP_OFF_CODE.equals(t.getSystemCode())).orElse(false);
     }
 
     /**
-     * The year a balance is kept under: the leave's year, or 0 for the comp-off balance
+     * The balance a leave type takes its days from: comp-off has its own, every other type uses the monthly one
      */
-    public int balanceYear(Integer leaveTypeId, int year) {
-        return isCompOff(leaveTypeId) ? LeaveBalance.NO_YEAR : year;
+    public Integer balanceTypeId(Integer leaveTypeId) {
+        return isCompOff(leaveTypeId) ? leaveTypeId : getMonthlyLeaveType().getLeaveTypeId();
     }
 
     /**
-     * Get leave balance for an employee for a specific leave type (the comp-off balance whatever the year)
+     * The balance a leave type takes its days from (whatever the year: balances are not tied to a year)
      */
     public Optional<LeaveBalance> getLeaveBalance(Integer employeeId, Integer leaveTypeId, Integer year) {
         return leaveBalanceRepository.findByEmployeeIdAndLeaveTypeIdAndYear(
-                employeeId, leaveTypeId, balanceYear(leaveTypeId, year));
+                employeeId, balanceTypeId(leaveTypeId), LeaveBalance.NO_YEAR);
     }
 
     /**
@@ -82,7 +97,7 @@ public class LeaveService {
     }
 
     /**
-     * All balances shown for a year: that year's balances plus the comp-off balance
+     * All balances shown for a year: the monthly and comp-off balances (and any older yearly ones)
      */
     public List<LeaveBalance> getAllLeaveBalances(Integer employeeId, Integer year) {
         return leaveBalanceRepository.findByEmployeeIdAndYearInOrderByLeaveTypeId(
@@ -90,7 +105,7 @@ public class LeaveService {
     }
 
     /**
-     * Ledger entries for a year (and the comp-off balance), oldest first
+     * Ledger entries of the balances shown for a year (see getAllLeaveBalances), oldest first
      */
     public List<LeaveTransaction> getTransactions(Integer employeeId, Integer year) {
         return leaveTransactionRepository.findByEmployeeIdAndYearInOrderByCreatedAtAscTransactionIdAsc(
@@ -98,36 +113,34 @@ public class LeaveService {
     }
 
     /**
-     * Create the yearly balance for an employee (HR). Comp-off days are credited, not allotted.
+     * Add one month's leave to the monthly balance. The month is kept as the ledger reference (yyyymm),
+     * so LeaveAccrualService never credits the same month twice.
      */
-    public LeaveBalance createLeaveBalance(Integer employeeId, Integer leaveTypeId, BigDecimal totalDays, Integer year) {
-        if (isCompOff(leaveTypeId)) {
-            throw new IllegalArgumentException(
-                    "Compensatory leave is credited through comp-off requests or balance adjustments, not allotted");
-        }
-        requireEmployeeAndType(employeeId, leaveTypeId);
-        requireCalendarYear(year);
-        requireHalfDays(totalDays, "Total days");
-        if (totalDays.signum() <= 0) {
-            throw new IllegalArgumentException("Total days must be greater than 0");
-        }
-        if (getLeaveBalance(employeeId, leaveTypeId, year).isPresent()) {
-            throw new IllegalStateException("A balance for this employee, leave type and year already exists");
-        }
-        LeaveBalance balance = leaveBalanceRepository.save(
-                new LeaveBalance(null, employeeId, leaveTypeId, totalDays, BigDecimal.ZERO, BigDecimal.ZERO, year));
-        log(balance, totalDays, TransactionType.ALLOCATION, null, "Balance set up for " + year);
+    public LeaveBalance creditMonth(Integer employeeId, YearMonth month, BigDecimal days) {
+        LeaveBalance balance = getOrCreate(employeeId, getMonthlyLeaveType().getLeaveTypeId());
+        balance.setTotalDaysAllowed(balance.getTotalDaysAllowed().add(days));
+        leaveBalanceRepository.save(balance);
+        log(balance, days, TransactionType.MONTHLY_CREDIT, monthReference(month),
+                "Monthly leave for " + MONTH_NAME.format(month));
         return balance;
+    }
+
+    public static int monthReference(YearMonth month) {
+        return month.getYear() * 100 + month.getMonthValue();
+    }
+
+    public static YearMonth monthOfReference(int reference) {
+        return YearMonth.of(reference / 100, reference % 100);
     }
 
     /**
      * Deduct approved leave. No lower limit: the balance may go negative; a missing balance is created at 0.
      */
     public LeaveBalance deductLeave(Integer employeeId, Integer leaveTypeId, BigDecimal days, Integer year, Integer leaveRequestId) {
-        LeaveBalance balance = getOrCreate(employeeId, leaveTypeId, year);
+        LeaveBalance balance = getOrCreate(employeeId, leaveTypeId);
         balance.setUsedDays(balance.getUsedDays().add(days));
         leaveBalanceRepository.save(balance);
-        log(balance, days.negate(), TransactionType.LEAVE_DEDUCTED, leaveRequestId, "Leave approved");
+        log(balance, days.negate(), TransactionType.LEAVE_DEDUCTED, leaveRequestId, typeName(leaveTypeId) + " approved");
         return balance;
     }
 
@@ -135,10 +148,10 @@ public class LeaveService {
      * Give back the days of a cancelled approved leave
      */
     public LeaveBalance restoreLeave(Integer employeeId, Integer leaveTypeId, BigDecimal days, Integer year, Integer leaveRequestId) {
-        LeaveBalance balance = getOrCreate(employeeId, leaveTypeId, year);
+        LeaveBalance balance = getOrCreate(employeeId, leaveTypeId);
         balance.setUsedDays(balance.getUsedDays().subtract(days));
         leaveBalanceRepository.save(balance);
-        log(balance, days, TransactionType.LEAVE_RESTORED, leaveRequestId, "Approved leave cancelled");
+        log(balance, days, TransactionType.LEAVE_RESTORED, leaveRequestId, "Approved " + typeName(leaveTypeId) + " cancelled");
         return balance;
     }
 
@@ -146,7 +159,7 @@ public class LeaveService {
      * Credit approved comp-off days to the employee's comp-off balance
      */
     public LeaveBalance creditCompOff(Integer employeeId, BigDecimal days, Integer compOffRequestId, String reason) {
-        LeaveBalance balance = getOrCreate(employeeId, getCompOffLeaveType().getLeaveTypeId(), LeaveBalance.NO_YEAR);
+        LeaveBalance balance = getOrCreate(employeeId, getCompOffLeaveType().getLeaveTypeId());
         balance.setAdjustedDays(balance.getAdjustedDays().add(days));
         leaveBalanceRepository.save(balance);
         log(balance, days, TransactionType.COMP_OFF_CREDIT, compOffRequestId, reason);
@@ -155,12 +168,10 @@ public class LeaveService {
 
     /**
      * HR correction: add (positive) or remove (negative) days, with a reason. Creates the balance if missing.
+     * Any type other than comp-off adjusts the monthly balance; the year is not used (balances carry over).
      */
     public LeaveBalance adjustBalance(Integer employeeId, Integer leaveTypeId, Integer year, BigDecimal days, String reason) {
         requireEmployeeAndType(employeeId, leaveTypeId);
-        if (!isCompOff(leaveTypeId)) {
-            requireCalendarYear(year);
-        }
         if (days == null || days.signum() == 0) {
             throw new IllegalArgumentException("Adjustment days cannot be 0");
         }
@@ -168,34 +179,22 @@ public class LeaveService {
         if (ValidationUtil.isEmpty(reason)) {
             throw new IllegalArgumentException("Please give a reason for the adjustment");
         }
-        LeaveBalance balance = getOrCreate(employeeId, leaveTypeId, year);
+        LeaveBalance balance = getOrCreate(employeeId, leaveTypeId);
         balance.setAdjustedDays(balance.getAdjustedDays().add(days));
         leaveBalanceRepository.save(balance);
         log(balance, days, TransactionType.ADJUSTMENT, null, reason.trim());
         return balance;
     }
 
-    /**
-     * Reset used days to 0 for the year (the comp-off balance is not affected)
-     */
-    public void resetYearlyLeaveBalance(Integer employeeId, Integer year) {
-        requireCalendarYear(year);
-        for (LeaveBalance balance : leaveBalanceRepository.findByEmployeeIdAndYear(employeeId, year)) {
-            BigDecimal used = balance.getUsedDays();
-            if (used.signum() == 0) {
-                continue;
-            }
-            balance.setUsedDays(BigDecimal.ZERO);
-            leaveBalanceRepository.save(balance);
-            log(balance, used, TransactionType.RESET, null, "Yearly reset of used days");
-        }
+    private LeaveBalance getOrCreate(Integer employeeId, Integer leaveTypeId) {
+        Integer balanceTypeId = balanceTypeId(leaveTypeId);
+        return leaveBalanceRepository.findByEmployeeIdAndLeaveTypeIdAndYear(employeeId, balanceTypeId, LeaveBalance.NO_YEAR)
+                .orElseGet(() -> leaveBalanceRepository.save(new LeaveBalance(
+                        null, employeeId, balanceTypeId, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, LeaveBalance.NO_YEAR)));
     }
 
-    private LeaveBalance getOrCreate(Integer employeeId, Integer leaveTypeId, Integer year) {
-        int balanceYear = balanceYear(leaveTypeId, year);
-        return leaveBalanceRepository.findByEmployeeIdAndLeaveTypeIdAndYear(employeeId, leaveTypeId, balanceYear)
-                .orElseGet(() -> leaveBalanceRepository.save(new LeaveBalance(
-                        null, employeeId, leaveTypeId, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, balanceYear)));
+    private String typeName(Integer leaveTypeId) {
+        return leaveTypeRepository.findById(leaveTypeId).map(LeaveType::getLeaveTypeName).orElse("Leave");
     }
 
     private void log(LeaveBalance balance, BigDecimal days, TransactionType type, Integer referenceId, String reason) {
@@ -229,15 +228,6 @@ public class LeaveService {
         }
         if (leaveTypeId == null || !leaveTypeRepository.existsById(leaveTypeId)) {
             throw new NoSuchElementException("Leave type not found");
-        }
-    }
-
-    /**
-     * Yearly balances need a real year; 0 is reserved for the comp-off balance
-     */
-    private static void requireCalendarYear(Integer year) {
-        if (year == null || year < 2000 || year > 2100) {
-            throw new IllegalArgumentException("Please give a valid year (2000-2100)");
         }
     }
 
