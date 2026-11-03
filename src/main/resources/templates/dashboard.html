@@ -66,6 +66,26 @@
 
             <p class="text-muted" id="dayTotals"></p>
 
+            <!-- Contracts ending soon -->
+            <div class="card mb-4">
+                <div class="card-header bg-warning d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Contracts ending in the next 30 days</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover mb-0">
+                            <thead class="table-dark">
+                                <tr><th>Employee</th><th>Team</th><th>Designation</th><th>Lead</th><th>End date</th><th>When</th></tr>
+                            </thead>
+                            <tbody id="contractsEndingList">
+                                <tr><td colspan="6" class="text-center">Loading...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <p class="text-muted small mt-2 mb-0">Active employees only. Deactivate an employee on the Employees page when their contract ends, or change the end date if it is extended.</p>
+                </div>
+            </div>
+
             <!-- Negative balances -->
             <div class="card mb-4">
                 <div class="card-header bg-danger text-white d-flex justify-content-between align-items-center">
@@ -109,14 +129,14 @@
                         <table class="table table-sm table-striped table-hover mb-0">
                             <thead class="table-dark">
                                 <tr>
-                                    <th>ID</th><th>Employee</th><th>Team</th><th>Lead</th><th>Leave type</th>
+                                    <th>Employee</th><th>Team</th><th>Lead</th><th>Leave type</th>
                                     <th class="text-end">Monthly added</th><th class="text-end">Used</th>
                                     <th class="text-end">Comp-off credited</th><th class="text-end">Adjustments</th>
                                     <th class="text-end"><a href="#" class="text-white" id="sortRemaining">Remaining <span id="sortArrow"></span></a></th>
                                 </tr>
                             </thead>
                             <tbody id="balanceList">
-                                <tr><td colspan="10" class="text-center">Loading...</td></tr>
+                                <tr><td colspan="9" class="text-center">Loading...</td></tr>
                             </tbody>
                         </table>
                     </div>

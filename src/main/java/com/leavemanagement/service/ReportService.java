@@ -1,6 +1,7 @@
 package com.leavemanagement.service;
 
 import com.leavemanagement.dto.*;
+import com.leavemanagement.entity.Employee;
 import com.leavemanagement.entity.EmployeeStatus;
 import com.leavemanagement.entity.LeaveBalance;
 import com.leavemanagement.entity.LeaveStatus;
@@ -12,9 +13,12 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.stream.Collectors;
 
 /**
  * HR dashboard and Team Lead "My team" reports. Totals and filters run in the database (see LeaveBalanceRepository).
@@ -49,6 +53,21 @@ public class ReportService {
      */
     public List<BalanceReportRow> getLeaveBalances(int year, String department, Integer leaveTypeId) {
         return toRows(leaveBalanceRepository.findSnapshots(year, department, leaveTypeId, null));
+    }
+
+    /**
+     * Active employees whose contract ends within the given number of days, or has already ended, soonest first
+     */
+    public List<ContractEndingRow> getContractsEnding(LocalDate today, int days) {
+        List<Employee> employees = employeeRepository
+                .findByStatusAndEndDateLessThanEqualOrderByEndDateAsc(EmployeeStatus.ACTIVE, today.plusDays(days));
+        List<Integer> leadIds = employees.stream().map(Employee::getReporting_LeadId).filter(Objects::nonNull).distinct().toList();
+        Map<Integer, String> leadNames = employeeRepository.findAllById(leadIds).stream()
+                .collect(Collectors.toMap(Employee::getEmployeeId, Employee::getFullName));
+        return employees.stream()
+                .map(e -> new ContractEndingRow(e.getEmployeeId(), e.getFullName(), e.getDepartment(), e.getDesignation(),
+                        leadNames.get(e.getReporting_LeadId()), e.getEndDate(), ChronoUnit.DAYS.between(today, e.getEndDate())))
+                .toList();
     }
 
     public List<NegativeBalanceRow> getNegativeBalances(int year) {

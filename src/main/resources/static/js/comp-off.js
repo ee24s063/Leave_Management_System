@@ -86,7 +86,7 @@ function canWithdraw(req) {
 function displayRequests(requests) {
     const tbody = document.getElementById('compOffList');
     if (requests.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="8" class="text-center">No comp-off requests here</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="7" class="text-center">No comp-off requests here</td></tr>';
         return;
     }
     tbody.innerHTML = requests.map(r => {
@@ -95,7 +95,6 @@ function displayRequests(requests) {
         const trail = approvalTrail(r.approvals);
         return `
         <tr>
-            <td>${r.compOffRequestId}</td>
             <td>${escapeHtml(r.employeeName)}${isMine(r) ? ' <span class="badge bg-light text-dark">you</span>' : ''}</td>
             <td>${worked}</td>
             <td>${formatDays(r.days)}</td>

@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 
@@ -16,6 +17,13 @@ public interface EmployeeRepository extends JpaRepository<Employee, Integer> {
     boolean existsByEmailIgnoreCase(String email);
 
     Optional<Employee> findFirstByEmailIgnoreCase(String email);
+
+    Optional<Employee> findFirstByAadhaarNumber(String aadhaarNumber);
+
+    Optional<Employee> findFirstByPanNumber(String panNumber);
+
+    // Active employees whose contract ends on or before the given date (already ended ones included), soonest first
+    List<Employee> findByStatusAndEndDateLessThanEqualOrderByEndDateAsc(EmployeeStatus status, LocalDate date);
 
     List<Employee> findByPhoneIsNotNull();
 

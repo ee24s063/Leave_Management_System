@@ -136,18 +136,22 @@ public class ReportExportService {
     }
 
     /**
-     * All employees with status, role and reporting lead (salary included: HR only)
+     * All employees with status, role and reporting lead (salary included: HR only), contract end date,
+     * ID proof (Aadhaar and PAN in full: the file is for HR only) and emergency contact
      */
     public ExcelFile employees() {
-        List<List<?>> rows = employeeService.toViews(employeeService.getAllEmployees(), true).stream()
+        List<List<?>> rows = employeeService.toViews(employeeService.getAllEmployees(), EmployeeView.Access.FULL).stream()
                 .sorted(Comparator.comparing(EmployeeView::employeeId))
                 .map(e -> Arrays.<Object>asList(e.employeeId(), e.firstName(), e.lastName(), e.email(), orEmpty(e.phone()),
                         e.department(), e.designation(), e.dateOfJoining(), label(e.status()),
-                        e.role() == null ? "No login" : label(e.role()), orEmpty(e.reportingLeadName()), e.salary()))
+                        e.role() == null ? "No login" : label(e.role()), orEmpty(e.reportingLeadName()), e.salary(),
+                        e.endDate(), orEmpty(e.aadhaarNumber()), orEmpty(e.panNumber()), orEmpty(e.emergencyContactName()),
+                        orEmpty(e.emergencyContactRelation()), orEmpty(e.emergencyContactPhone())))
                 .collect(Collectors.toList());
         return file("employees-" + LocalDate.now(), "Employees", List.of(
                 "Employee ID", "First name", "Last name", "Email", "Phone", "Department", "Designation",
-                "Date of joining", "Status", "Role", "Reporting lead", "Salary"), rows, null);
+                "Date of joining", "Status", "Role", "Reporting lead", "Salary", "End date", "Aadhaar number",
+                "PAN", "Emergency contact", "Relation", "Emergency number"), rows, null);
     }
 
     private ExcelFile file(String name, String sheet, List<String> headers, List<List<?>> rows, List<?> totals) {

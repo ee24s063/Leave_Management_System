@@ -1,6 +1,7 @@
 package com.leavemanagement.controller;
 
 import com.leavemanagement.dto.BalanceReportRow;
+import com.leavemanagement.dto.ContractEndingRow;
 import com.leavemanagement.dto.NegativeBalanceRow;
 import com.leavemanagement.dto.ReportSummary;
 import com.leavemanagement.dto.TeamReport;
@@ -53,6 +54,14 @@ public class ReportController {
                                                    @RequestParam(required = false) Integer leaveTypeId) {
         String dept = department == null || department.isBlank() ? null : department.trim();
         return reportService.getLeaveBalances(resolveYear(year), dept, leaveTypeId);
+    }
+
+    /**
+     * Active employees whose contract ends in the next 30 days (or has already ended)
+     */
+    @GetMapping("/contracts-ending")
+    public List<ContractEndingRow> getContractsEnding(@RequestParam(defaultValue = "30") int days) {
+        return reportService.getContractsEnding(LocalDate.now(), Math.max(0, Math.min(days, 365)));
     }
 
     /**

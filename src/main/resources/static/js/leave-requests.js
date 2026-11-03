@@ -117,7 +117,7 @@ function displayLeaveRequests(requests) {
     tbody.innerHTML = '';
 
     if (requests.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="10" class="text-center">No leave requests here</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="9" class="text-center">No leave requests here</td></tr>';
         return;
     }
 
@@ -129,7 +129,6 @@ function displayLeaveRequests(requests) {
         const note = nextStepNote(req);
 
         row.innerHTML = `
-            <td>${req.leaveRequestId}</td>
             <td>${escapeHtml(req.employeeName)}${isMine(req) ? ' <span class="badge bg-light text-dark">you</span>' : ''}</td>
             <td>${escapeHtml(req.leaveTypeName)}</td>
             <td>${formatDate(req.startDate)}</td>
@@ -252,7 +251,7 @@ function viewRequestDetails(requestId) {
             if (data) {
                 const status = LEAVE_STATUS[data.status] ? LEAVE_STATUS[data.status].label : data.status;
                 const trail = approvalTrail(data.approvals);
-                const details = `Leave Request #${data.leaveRequestId}
+                const details = `Leave Request
 
 Employee: ${data.employeeName}
 Reporting Lead: ${data.reportingLeadName || '-'}

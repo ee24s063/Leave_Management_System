@@ -239,6 +239,12 @@ class UiTests {
         type("salary", "42000");
         setDate("dateOfJoining", LocalDate.of(2026, 1, 5));
         new Select(driver.findElement(By.id("role"))).selectByValue("EMPLOYEE");
+        setDate("endDate", LocalDate.of(2028, 1, 4));
+        type("aadhaarNumber", "2345 6789 0123");
+        type("panNumber", "abcde1234f");
+        type("emergencyContactName", "Sara Khan");
+        type("emergencyContactRelation", "Sister");
+        type("emergencyContactPhone", "+91 90000 00001");
         clickWhenReady(By.id("submitBtn"));
         wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("sentNotice")));
         assertThat(text("#sentNoticeText"))
@@ -246,6 +252,14 @@ class UiTests {
         assertThat(mailSender.last().getTo()).containsExactly("omar@ui.test");
         assertThat(mailSender.lastTemporaryPassword()).hasSize(12);
         waitForText("#employeesList", "Omar Khan");
+
+        // View shows the full profile, ID numbers included
+        clickWhenReady(By.xpath("//tr[td[text()='Omar Khan']]//button[text()='View']"));
+        waitForText("#viewEmployeeBody", "2345 6789 0123");
+        assertThat(text("#viewEmployeeTitle")).isEqualTo("Omar Khan");
+        assertThat(text("#viewEmployeeBody")).contains("ABCDE1234F", "Sara Khan (Sister)", "+91 90000 00001");
+        clickWhenReady(By.cssSelector("#viewEmployeeModal .btn-secondary"));
+        wait.until(ExpectedConditions.invisibilityOfElementLocated(By.id("viewEmployeeModal")));
         logout();
     }
 

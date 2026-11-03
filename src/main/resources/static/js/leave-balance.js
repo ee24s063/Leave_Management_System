@@ -42,8 +42,11 @@ async function loadEmployeeOptions(me) {
     if (me.employee && !employees.some(e => e.employeeId === me.employee.employeeId)) {
         employees.unshift(me.employee);
     }
+    // Names only; the email is added when two people share a name
+    const sameName = name => employees.filter(e => e.fullName === name).length > 1;
     const options = employees.map(e =>
-        `<option value="${e.employeeId}">${escapeHtml(e.fullName)} (#${e.employeeId})</option>`).join('');
+        `<option value="${e.employeeId}">${escapeHtml(e.fullName)}${sameName(e.fullName)
+            ? ` (${escapeHtml(e.email)})` : ''}</option>`).join('');
 
     const viewSelect = document.getElementById('employeeIdBalance');
     viewSelect.innerHTML = options || '<option value="">No employees</option>';
@@ -75,10 +78,9 @@ async function loadLeaveTypes() {
     const tbody = document.getElementById('leaveTypesList');
     if (tbody) {
         tbody.innerHTML = types.length === 0
-            ? '<tr><td colspan="3" class="text-center">No leave types yet. Add one above.</td></tr>'
+            ? '<tr><td colspan="2" class="text-center">No leave types yet. Add one above.</td></tr>'
             : types.map(t => `
                 <tr>
-                    <td>${t.leaveTypeId}</td>
                     <td>${escapeHtml(t.leaveTypeName)}${t.systemCode ? ' <span class="badge bg-secondary">built-in</span>' : ''}</td>
                     <td>${escapeHtml(t.description || '')}</td>
                 </tr>`).join('');
@@ -119,7 +121,7 @@ function loadLedger(employeeId, year) {
                 <td>${escapeHtml(t.leaveTypeName)}</td>
                 <td>${escapeHtml(TRANSACTION_LABELS[t.type] || t.type)}</td>
                 <td class="${t.days < 0 ? 'text-danger' : 'text-success'} fw-bold">${t.days > 0 ? '+' : ''}${formatDays(t.days)}</td>
-                <td>${escapeHtml(t.reason || '')}${t.referenceId ? ` <span class="text-muted">(#${t.referenceId})</span>` : ''}</td>
+                <td>${escapeHtml(t.reason || '')}</td>
                 <td>${escapeHtml(t.createdByName)}</td>
             </tr>`).join('');
     });

@@ -4,6 +4,7 @@ import com.leavemanagement.dto.CreateEmployeeRequest;
 import com.leavemanagement.dto.CreatedEmployeeResponse;
 import com.leavemanagement.dto.DeleteEmployeeRequest;
 import com.leavemanagement.dto.EmployeeView;
+import com.leavemanagement.dto.EmployeeView.Access;
 import com.leavemanagement.dto.UpdateEmployeeRequest;
 import com.leavemanagement.entity.Employee;
 import com.leavemanagement.entity.Role;
@@ -51,7 +52,10 @@ public class EmployeeController {
         accessPolicy.checkCanView(id);
         Employee employee = employeeService.getEmployeeById(id)
                 .orElseThrow(() -> new NoSuchElementException("Employee not found"));
-        return employeeService.toView(employee, isHr());
+        // HR sees ID numbers in full (for the edit form); the employee sees their own masked; leads see no personal details
+        Access access = isHr() ? Access.FULL
+                : id.equals(currentUser.get().getEmployeeId()) ? Access.PERSONAL : Access.LIMITED;
+        return employeeService.toView(employee, access);
     }
 
     /**
@@ -64,13 +68,13 @@ public class EmployeeController {
             List<Employee> employees = includeInactive
                     ? employeeService.getAllEmployees()
                     : employeeService.getAllActiveEmployees();
-            return employeeService.toViews(employees, true);
+            return employeeService.toViews(employees, Access.PERSONAL);
         }
         if (me.hasRole(Role.TEAM_LEAD)) {
-            return employeeService.toViews(employeeService.getTeamMembers(me.getEmployeeId()), false);
+            return employeeService.toViews(employeeService.getTeamMembers(me.getEmployeeId()), Access.LIMITED);
         }
         if (me.hasRole(Role.LAB_HEAD)) {
-            return employeeService.toViews(employeeService.getStaffApprovedBy(me.getEmployeeId()), false);
+            return employeeService.toViews(employeeService.getStaffApprovedBy(me.getEmployeeId()), Access.LIMITED);
         }
         throw new AccessDeniedException("Only Team Leads, HR and the Lab Head can list employees");
     }
@@ -80,7 +84,7 @@ public class EmployeeController {
      */
     @GetMapping("/department/{department}")
     public List<EmployeeView> getEmployeesByDepartment(@PathVariable String department) {
-        return employeeService.toViews(employeeService.getEmployeesByDepartment(department), true);
+        return employeeService.toViews(employeeService.getEmployeesByDepartment(department), Access.PERSONAL);
     }
 
     /**
@@ -89,7 +93,7 @@ public class EmployeeController {
     @GetMapping("/search")
     public List<EmployeeView> searchEmployees(@RequestParam String name,
                                               @RequestParam(defaultValue = "false") boolean includeInactive) {
-        return employeeService.toViews(employeeService.searchEmployeesByName(name, includeInactive), true);
+        return employeeService.toViews(employeeService.searchEmployeesByName(name, includeInactive), Access.PERSONAL);
     }
 
     /**
@@ -97,7 +101,7 @@ public class EmployeeController {
      */
     @PutMapping("/{id}")
     public EmployeeView updateEmployee(@PathVariable Integer id, @Valid @RequestBody UpdateEmployeeRequest request) {
-        return employeeService.toView(employeeService.updateEmployee(id, request), true);
+        return employeeService.toView(employeeService.updateEmployee(id, request), Access.FULL);
     }
 
     /**

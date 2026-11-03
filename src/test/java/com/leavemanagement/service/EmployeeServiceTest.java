@@ -3,6 +3,8 @@ package com.leavemanagement.service;
 import com.leavemanagement.config.RoleNames;
 import com.leavemanagement.dto.CreateEmployeeRequest;
 import com.leavemanagement.dto.CreatedEmployeeResponse;
+import com.leavemanagement.dto.EmployeeView;
+import com.leavemanagement.dto.EmployeeView.Access;
 import com.leavemanagement.dto.UpdateEmployeeRequest;
 import com.leavemanagement.entity.Employee;
 import com.leavemanagement.entity.EmployeeStatus;
@@ -94,16 +96,18 @@ class EmployeeServiceTest {
 
     private CreateEmployeeRequest create(String email, Integer leadId) {
         return new CreateEmployeeRequest(" Asha ", "Rao", email, "", "IT", "Engineer",
-                LocalDate.of(2025, 6, 1), 60000.0, leadId, Role.EMPLOYEE, null);
+                LocalDate.of(2025, 6, 1), 60000.0, leadId, Role.EMPLOYEE, null,
+                LocalDate.of(2027, 5, 31), "2345 6789 0123", "abcde1234f", "Ravi Rao", "Father", "9876500000");
     }
 
     private CreateEmployeeRequest createHr(Integer leadId, Integer headId) {
         return new CreateEmployeeRequest("Hema", "Rao", "hema@test.com", "", "HR", "HR Officer",
-                LocalDate.of(2025, 6, 1), 60000.0, leadId, Role.HR_ADMIN, headId);
+                LocalDate.of(2025, 6, 1), 60000.0, leadId, Role.HR_ADMIN, headId,
+                LocalDate.of(2027, 5, 31), "2345 6789 0123", "abcde1234f", "Ravi Rao", "Father", "9876500000");
     }
 
     private UpdateEmployeeRequest update(EmployeeStatus status, Integer leadId, Role role, String email) {
-        return new UpdateEmployeeRequest(null, null, email, null, null, null, null, status, leadId, null, role, null);
+        return new UpdateEmployeeRequest(null, null, email, null, null, null, null, status, leadId, null, role, null, null, null, null, null, null, null);
     }
 
     @Test
@@ -133,7 +137,7 @@ class EmployeeServiceTest {
         when(employees.findFirstByEmailIgnoreCase("asha@test.com")).thenReturn(Optional.of(member));
         assertThatThrownBy(() -> service.createEmployee(create("asha@test.com", null)))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessage("An employee with this email already exists: E 3 (#3). Check the details, or edit the existing record instead.");
+                .hasMessage("An employee with this email already exists: E 3 (e3@test.com). Check the details, or edit the existing record instead.");
         verify(accounts, never()).save(any());
     }
 
@@ -150,10 +154,11 @@ class EmployeeServiceTest {
         member.setStatus(EmployeeStatus.RESIGNED);
         when(employees.findByPhoneIsNotNull()).thenReturn(List.of(member));
         CreateEmployeeRequest samePhone = new CreateEmployeeRequest("Asha", "Rao", "asha@test.com", "98765-43210", "IT",
-                "Engineer", LocalDate.of(2025, 6, 1), 60000.0, null, Role.EMPLOYEE, null);
+                "Engineer", LocalDate.of(2025, 6, 1), 60000.0, null, Role.EMPLOYEE, null,
+                LocalDate.of(2027, 5, 31), "2345 6789 0123", "abcde1234f", "Ravi Rao", "Father", "9876500000");
         assertThatThrownBy(() -> service.createEmployee(samePhone))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("phone number already exists: E 3 (#3), resigned");
+                .hasMessageContaining("phone number already exists: E 3 (e3@test.com), resigned");
         verify(employees, never()).save(any());
     }
 
@@ -164,13 +169,15 @@ class EmployeeServiceTest {
         other.setPhone("9876543210"); // an existing duplicate from before this check
         when(employees.findByPhoneIsNotNull()).thenReturn(List.of(member, other));
         UpdateEmployeeRequest samePhone = new UpdateEmployeeRequest("Renamed", null, null, "+91 98765 43210",
-                null, null, null, null, null, null, null, null);
+                null, null, null, null, null, null, null, null,
+                null, null, null, null, null, null);
         service.updateEmployee(MEMBER, samePhone);
         assertThat(member.getFirstName()).isEqualTo("Renamed");
 
         Employee third = employee(5, null);
         UpdateEmployeeRequest takenPhone = new UpdateEmployeeRequest(null, null, null, "9876543210",
-                null, null, null, null, null, null, null, null);
+                null, null, null, null, null, null, null, null,
+                null, null, null, null, null, null);
         assertThatThrownBy(() -> service.updateEmployee(5, takenPhone)).hasMessageContaining("phone number already exists");
         assertThat(third.getPhone()).isNull();
     }
@@ -250,9 +257,74 @@ class EmployeeServiceTest {
     }
 
     @Test
-    void salaryIsHiddenUnlessAskedFor() {
+    void salaryAndPersonalDetailsAreHiddenFromLeads() {
         member.setSalary(50000.0);
-        assertThat(service.toView(member, false).salary()).isNull();
-        assertThat(service.toView(member, true).salary()).isEqualTo(50000.0);
+        member.setAadhaarNumber("234567890123");
+        member.setEmergencyContactName("Ravi Rao");
+        EmployeeView limited = service.toView(member, Access.LIMITED);
+        assertThat(limited.salary()).isNull();
+        assertThat(limited.aadhaarMasked()).isNull();
+        assertThat(limited.emergencyContactName()).isNull();
+        EmployeeView personal = service.toView(member, Access.PERSONAL);
+        assertThat(personal.salary()).isEqualTo(50000.0);
+        assertThat(personal.aadhaarNumber()).isNull();
+        assertThat(personal.aadhaarMasked()).isEqualTo("XXXX XXXX 0123");
+        assertThat(personal.emergencyContactName()).isEqualTo("Ravi Rao");
+        assertThat(service.toView(member, Access.FULL).aadhaarNumber()).isEqualTo("234567890123");
+    }
+
+    // --- Contract end date, ID proof and emergency contact ---
+
+    @Test
+    void newEmployeeDetailsAreCleanedStoredAndMaskedInTheResponse() {
+        CreatedEmployeeResponse created = service.createEmployee(create("asha@test.com", null));
+        ArgumentCaptor<Employee> saved = ArgumentCaptor.forClass(Employee.class);
+        verify(employees).save(saved.capture());
+        assertThat(saved.getValue().getAadhaarNumber()).isEqualTo("234567890123");
+        assertThat(saved.getValue().getPanNumber()).isEqualTo("ABCDE1234F");
+        assertThat(saved.getValue().getEndDate()).isEqualTo(LocalDate.of(2027, 5, 31));
+        assertThat(saved.getValue().getEmergencyContactRelation()).isEqualTo("Father");
+        assertThat(created.employee().aadhaarNumber()).isNull();               // full numbers only in HR's edit view
+        assertThat(created.employee().aadhaarMasked()).isEqualTo("XXXX XXXX 0123");
+        assertThat(created.employee().panMasked()).isEqualTo("XXXXXX234F");
+    }
+
+    @Test
+    void aadhaarAndPanMustHaveTheRightFormat() {
+        assertThat(EmployeeService.normalizeAadhaar(" 2345-6789-0123 ")).isEqualTo("234567890123");
+        assertThatThrownBy(() -> EmployeeService.normalizeAadhaar("1234 5678 9012")).hasMessageContaining("Aadhaar");
+        assertThatThrownBy(() -> EmployeeService.normalizeAadhaar("2345 6789 012")).hasMessageContaining("Aadhaar");
+        assertThat(EmployeeService.normalizePan("abcde 1234f")).isEqualTo("ABCDE1234F");
+        assertThatThrownBy(() -> EmployeeService.normalizePan("ABCD12345F")).hasMessageContaining("PAN");
+    }
+
+    @Test
+    void endDateMustBeAfterJoining() {
+        CreateEmployeeRequest req = new CreateEmployeeRequest("Asha", "Rao", "asha@test.com", "", "IT", "Engineer",
+                LocalDate.of(2025, 6, 1), 60000.0, null, Role.EMPLOYEE, null,
+                LocalDate.of(2025, 6, 1), "2345 6789 0123", "ABCDE1234F", "Ravi Rao", "Father", "9876500000");
+        assertThatThrownBy(() -> service.createEmployee(req))
+                .isInstanceOf(IllegalArgumentException.class).hasMessage("End date must be after the date of joining");
+        verify(employees, never()).save(any());
+    }
+
+    @Test
+    void aadhaarOrPanOfAnotherEmployeeIsRefused() {
+        member.setAadhaarNumber("234567890123");
+        when(employees.findFirstByAadhaarNumber("234567890123")).thenReturn(Optional.of(member));
+        assertThatThrownBy(() -> service.createEmployee(create("asha@test.com", null)))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Aadhaar number already exists: E 3 (e3@test.com)");
+
+        // The employee keeping their own number is fine
+        UpdateEmployeeRequest same = new UpdateEmployeeRequest(null, null, null, null, null, null, null, null, null,
+                null, null, null, null, "2345 6789 0123", null, null, null, null);
+        service.updateEmployee(MEMBER, same);
+
+        employee(5, null);
+        when(employees.findFirstByPanNumber("ABCDE1234F")).thenReturn(Optional.of(member));
+        UpdateEmployeeRequest takenPan = new UpdateEmployeeRequest(null, null, null, null, null, null, null, null, null,
+                null, null, null, null, null, "ABCDE1234F", null, null, null);
+        assertThatThrownBy(() -> service.updateEmployee(5, takenPan)).hasMessageContaining("PAN already exists");
     }
 }

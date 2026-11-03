@@ -35,6 +35,8 @@ A Spring Boot web application for managing employees, leave balances and leave r
 
 ### Employee management (HR)
 - Create employees with name, email, phone, department/team, designation, salary, joining date, **role** and **reporting lead** (`reporting_LeadId`).
+- **Employee details (all required when adding an employee):** contract **end date** (after the joining date), **ID proof** (Aadhaar number: 12 digits, typed with or without spaces; PAN: e.g. `ABCDE1234F`, stored in capitals) and an **emergency contact** (name, relation, number). No two employees may share an Aadhaar or PAN. Employees added before this change get these details when HR next edits them (the form then requires them).
+- **Who sees them:** HR and the employee (on My Profile). In the employee list and on My Profile, Aadhaar and PAN are **masked** (`XXXX XXXX 0123`, `XXXXXX234F`). HR sees the full numbers with the **View** button (a window with the employee's whole profile), in the edit form and in the Employees Excel file. Team Leads and Lab Heads see neither the ID numbers nor the emergency contact.
 - The reporting lead must be an active employee with the Team Lead or HR role.
 - **HR staff** have two approvers instead: a **Lab Head** (required) and, optionally, a **Team Lead**. The Lab Head field (`headApproverId`) appears on the form when the role is HR. The second approver must be a Team Lead, not another HR user.
 - **No duplicate employees:** an employee cannot be created (or edited) with an email or phone number that another employee already has, including inactive, resigned and relieved ones. Emails are compared ignoring case; phone numbers on their last 10 digits, so `+91 98765 43210` and `9876543210` match. HR sees a warning naming the existing employee; an employee changing their own phone is only told it is taken. A phone number is only checked when it changes, so older duplicates can still be edited.
@@ -84,6 +86,7 @@ A Spring Boot web application for managing employees, leave balances and leave r
 
 ### Dashboard
 - **HR** (`/dashboard`): cards for active employees, requests waiting for a Team Lead and waiting for HR (leave + comp-off, split underneath), and employees with a balance below zero (red when above 0); total monthly days added, used and remaining.
+  - **Contracts ending in the next 30 days:** active employees whose end date is within 30 days, or has already passed (shown in red, "Ended 3 days ago"), soonest first. HR deactivates them on the Employees page, or changes the end date if the contract is extended.
   - **Negative balances:** every balance below zero, with team, lead, remaining days and the day it went below zero (from the ledger).
   - **Balance summary:** one row per employee for the monthly balance (plus their comp-off balance): monthly days added, used, comp-off credited, other adjustments, remaining. Filter by department and balance; click "Remaining" to sort.
   - Each name links to that employee's balance and history on the Leave Balance page.
@@ -99,7 +102,7 @@ Every export is an `.xlsx` file with a bold, frozen header row, filters on each 
 | Negative balances | Dashboard, Negative balances | Balances below zero, most negative first, with the date each went below zero |
 | Leave requests | Dashboard, Excel exports | Requests with any day in a date range, optionally one status; both approval steps (action, by whom, when, comments) |
 | Balance history | Leave Balance page | Every change to one employee's balances in a year, and to their comp-off balance |
-| Employees | Employees page, Dashboard | All employees with status, role, reporting lead and salary |
+| Employees | Employees page, Dashboard | All employees with status, role, reporting lead, salary, end date, full Aadhaar and PAN, and emergency contact (HR only) |
 
 ### Pages
 | Page | Who |
@@ -117,6 +120,8 @@ Every export is an `.xlsx` file with a bold, frozen header row, filters on each 
 | Login, Change Password | Everyone |
 
 Messages after an action (saved, approved, a warning, an error) appear in the **top-right corner** and stay in view while the page is scrolled: green for done, yellow for a warning, red for an error. Confirmations close after 5 seconds and warnings after 8; errors stay until closed with ✕.
+
+Employees are shown by name only; their internal number (employee ID) is not shown on any page, and neither are the serial numbers of leave requests, comp-off requests and leave types. The Excel exports keep an Employee ID column. Where two people share a name, the employee drop-down adds their email.
 
 ## Technology
 
@@ -174,7 +179,7 @@ The admin account is not an employee, so it cannot apply for leave. Create a sep
 ### Database
 - The database file is `leavemanagement.db` in the folder the app is started from.
 - The schema is created and upgraded by **Flyway** from `src/main/resources/db/migration`. Hibernate does not change the schema (`ddl-auto=none`).
-- Upgrading is automatic. For example, a Phase 1 database gets migration V2 at the next start: pending requests become "Waiting for Team Lead", and earlier approve/reject decisions are moved into the approval history. V3 adds the built-in Compensatory Leave type and writes opening ledger entries for existing balances (allotted days and days already used). V4 adds the token version used to cancel login tokens. V5 adds the Lab Head approver (`head_approver_id`) to employees and moves HR staff's pending requests to "Waiting for Lab Head / Team Lead"; HR then sets a Lab Head on each HR employee so those requests reach an approver. V6 adds the built-in Monthly Leave type and folds each employee's old per-type yearly balances (and their ledger entries) into one monthly balance.
+- Upgrading is automatic. For example, a Phase 1 database gets migration V2 at the next start: pending requests become "Waiting for Team Lead", and earlier approve/reject decisions are moved into the approval history. V3 adds the built-in Compensatory Leave type and writes opening ledger entries for existing balances (allotted days and days already used). V4 adds the token version used to cancel login tokens. V5 adds the Lab Head approver (`head_approver_id`) to employees and moves HR staff's pending requests to "Waiting for Lab Head / Team Lead"; HR then sets a Lab Head on each HR employee so those requests reach an approver. V6 adds the built-in Monthly Leave type and folds each employee's old per-type yearly balances (and their ledger entries) into one monthly balance. V7 adds the end date, Aadhaar, PAN and emergency contact columns to employees (empty for existing employees until HR fills them in).
 - A `leavemanagement.db` left over from versions before Flyway will not start. Move or delete it, and a new one is created.
 
 ## REST API
@@ -205,8 +210,8 @@ curl -H "Authorization: Bearer $TOKEN" http://localhost:8080/lms/api/reports/sum
 | Method | Path | Who | Description |
 | --- | --- | --- | --- |
 | GET | `/employees?includeInactive=false` | Team Lead (own team), HR (all) | List employees |
-| GET | `/employees/{id}` | Self, own lead, HR | Employee details (salary shown to HR only) |
-| POST | `/employees` | HR | Create employee + login; the temporary password is emailed (`passwordSentTo` in the response); 409 if the email cannot be sent |
+| GET | `/employees/{id}` | Self, own lead, HR | Employee details. HR gets everything, including the full `aadhaarNumber` and `panNumber`; the employee gets their own salary, emergency contact and `aadhaarMasked` / `panMasked`; their lead gets neither salary nor personal details |
+| POST | `/employees` | HR | Create employee + login; requires `endDate`, `aadhaarNumber`, `panNumber`, `emergencyContactName`, `emergencyContactRelation`, `emergencyContactPhone`; the temporary password is emailed (`passwordSentTo` in the response); 409 if the email cannot be sent or the email, phone, Aadhaar or PAN belongs to another employee |
 | PUT | `/employees/{id}` | HR | Update fields, `status`, `role`, `reporting_LeadId` (or `clearReportingLead: true`), `headApproverId` (HR staff only) |
 | POST | `/employees/{id}/reset-password` | HR | New temporary password, emailed to the employee |
 | GET | `/admin/mail-status` | Admin account only | Whether email is set up, and the sender address |
@@ -272,6 +277,7 @@ All take an optional `year` (defaults to the current year). The monthly and comp
 | GET | `/reports/summary?year=` | HR | Active employees, pending counts (`leavePendingTeamLead`, `leavePendingHr`, `compOffPendingTeamLead`, `compOffPendingHr`), `employeesWithNegativeBalance`, `totalAllotted` (monthly days added) / `totalUsed` / `totalRemaining` |
 | GET | `/reports/leave-balance?year=&department=&leaveTypeId=` | HR | One row per employee per balance: employee, team, lead, `totalDays`, `usedDays`, `compOffCredited`, `adjustments`, `remainingDays` |
 | GET | `/reports/negative-balances?year=` | HR | Balances below zero with `negativeSince` (date) |
+| GET | `/reports/contracts-ending?days=30` | HR | Active employees whose `endDate` is within the given days or already passed, with `daysLeft` (negative once ended) |
 | GET | `/reports/departments` | HR | Department names for the filter |
 | GET | `/reports/team?year=` | Team Lead | `teamSize`, `waitingForMe`, `waitingForHr` and the team's balance rows |
 | GET | `/reports/leave-balance/export?year=&department=&leaveTypeId=` | HR | Excel: leave balance report with totals |
@@ -305,7 +311,7 @@ src/test/java/     Spring Boot + MockMvc tests: access rules, approval workflow,
 
 ## Testing
 ```bash
-mvn test                          # all 292 tests, about a minute
+mvn test                          # all 303 tests, about a minute
 mvn test -DexcludedGroups=ui      # without the browser tests
 mvn test -Dtest=UiTests           # only the browser tests
 ```
@@ -313,13 +319,13 @@ Three levels:
 
 | Level | Where | Tests |
 | --- | --- | --- |
-| Unit: one module at a time, no database (JUnit 5, Mockito) | `src/test/java/com/leavemanagement/{util,entity,security,service}` | 161 |
-| Integration: whole app through the REST API with a real database | `src/test/java/com/leavemanagement/*Tests.java` | 118 |
+| Unit: one module at a time, no database (JUnit 5, Mockito) | `src/test/java/com/leavemanagement/{util,entity,security,service}` | 165 |
+| Integration: whole app through the REST API with a real database | `src/test/java/com/leavemanagement/*Tests.java` | 125 |
 | UI: a real headless browser clicking through the pages as each role (Selenium) | `src/test/java/com/leavemanagement/ui/UiTests.java` | 13 |
 
 The UI tests use Microsoft Edge, or Google Chrome when Edge's driver cannot be downloaded; with neither available they are skipped. They save a screenshot per scenario to `target/ui-screenshots`.
 
-Integration tests use a temporary SQLite file under `target/` and a fake mail sender (`RecordingMailSender`, so no real email is sent) and cover login (form and API, token cookie, Bearer tokens, altered tokens, logout and password changes cancelling tokens), CSRF, the forced password change, each access rule (own data, own team, HR-only actions), the two-level approval workflow (routing, HR approving for an absent lead, rejections, cancelling, queues, history), Lab Head approval of HR staff (either approver is final, other HR users refused, creating HR staff, the renamed role), half-day leave, monthly leave (carry-over, each month once, inactive employees skipped, inactive months skipped on reactivation), negative balances, comp-off, HR adjustments, the ledger adding up to the balance, the dashboard reports (totals, filters, comp-off vs adjustments, negative-balance dates, Team Lead scope), the Excel exports (each file is opened and its rows checked; HR only; download with the login cookie), and that every page renders for each role.
+Integration tests use a temporary SQLite file under `target/` and a fake mail sender (`RecordingMailSender`, so no real email is sent) and cover login (form and API, token cookie, Bearer tokens, altered tokens, logout and password changes cancelling tokens), CSRF, the forced password change, each access rule (own data, own team, HR-only actions), the two-level approval workflow (routing, HR approving for an absent lead, rejections, cancelling, queues, history), Lab Head approval of HR staff (either approver is final, other HR users refused, creating HR staff, the renamed role), employee details (required, Aadhaar/PAN format and duplicates, masking by viewer, contracts ending soon), half-day leave, monthly leave (carry-over, each month once, inactive employees skipped, inactive months skipped on reactivation), negative balances, comp-off, HR adjustments, the ledger adding up to the balance, the dashboard reports (totals, filters, comp-off vs adjustments, negative-balance dates, Team Lead scope), the Excel exports (each file is opened and its rows checked; HR only; download with the login cookie), and that every page renders for each role.
 
 ## Known limitations
 - An approved comp-off credit cannot be cancelled directly; HR corrects it with a negative balance adjustment.

@@ -11,6 +11,7 @@ import java.time.LocalDate;
 /**
  * HR request to create an employee together with their login account.
  * HR staff need a headApproverId (their Lab Head); their reporting lead, if any, must be a Team Lead.
+ * The contract end date, ID proof (Aadhaar, PAN) and emergency contact are required.
  */
 public record CreateEmployeeRequest(
         @NotBlank String firstName,
@@ -23,5 +24,11 @@ public record CreateEmployeeRequest(
         @NotNull @Positive Double salary,
         Integer reporting_LeadId,
         @NotNull Role role,
-        Integer headApproverId) {
+        Integer headApproverId,
+        @NotNull LocalDate endDate,
+        @NotBlank String aadhaarNumber,
+        @NotBlank String panNumber,
+        @NotBlank String emergencyContactName,
+        @NotBlank String emergencyContactRelation,
+        @NotBlank @Pattern(regexp = "^\\+?[0-9 -]{7,20}$", message = "must be a valid phone number") String emergencyContactPhone) {
 }

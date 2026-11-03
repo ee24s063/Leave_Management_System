@@ -263,7 +263,8 @@ class SecurityAccessTests {
     void onlyHrCreatesEmployees() throws Exception {
         String body = """
                 {"firstName":"Nia","lastName":"New","email":"nia@test.com","department":"IT","designation":"Dev",
-                 "salary":1000,"dateOfJoining":"2026-01-05","role":"EMPLOYEE","reporting_LeadId":%d}
+                 "salary":1000,"dateOfJoining":"2026-01-05","endDate":"2028-03-31","aadhaarNumber":"234567890003","panNumber":"ABCDD0003F",
+                 "emergencyContactName":"Ravi Test","emergencyContactRelation":"Father","emergencyContactPhone":"9000000003","role":"EMPLOYEE","reporting_LeadId":%d}
                 """.formatted(lead.getEmployeeId());
         mockMvc.perform(post("/api/employees").with(as(leadAccount)).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON).content(body))
@@ -289,7 +290,8 @@ class SecurityAccessTests {
     void duplicateEmailOrPhoneIsBlocked() throws Exception {
         String first = """
                 {"firstName":"Nia","lastName":"New","email":"nia@test.com","phone":"+91 98765 43210","department":"IT",
-                 "designation":"Dev","salary":1000,"dateOfJoining":"2026-01-05","role":"EMPLOYEE"}
+                 "designation":"Dev","salary":1000,"dateOfJoining":"2026-01-05","endDate":"2028-03-31","aadhaarNumber":"234567890004","panNumber":"ABCDE0004F",
+                 "emergencyContactName":"Ravi Test","emergencyContactRelation":"Father","emergencyContactPhone":"9000000004","role":"EMPLOYEE"}
                 """;
         mockMvc.perform(post("/api/employees").with(as(hrAccount)).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON).content(first))
@@ -313,7 +315,8 @@ class SecurityAccessTests {
     void reportingLeadMustBeATeamLead() throws Exception {
         String body = """
                 {"firstName":"Nia","lastName":"New","email":"nia@test.com","department":"IT","designation":"Dev",
-                 "salary":1000,"dateOfJoining":"2026-01-05","role":"EMPLOYEE","reporting_LeadId":%d}
+                 "salary":1000,"dateOfJoining":"2026-01-05","endDate":"2028-03-31","aadhaarNumber":"234567890005","panNumber":"ABCDF0005F",
+                 "emergencyContactName":"Ravi Test","emergencyContactRelation":"Father","emergencyContactPhone":"9000000005","role":"EMPLOYEE","reporting_LeadId":%d}
                 """.formatted(other.getEmployeeId());
         mockMvc.perform(post("/api/employees").with(as(hrAccount)).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON).content(body))

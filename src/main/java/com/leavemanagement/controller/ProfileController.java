@@ -3,6 +3,7 @@ package com.leavemanagement.controller;
 import com.leavemanagement.dto.AuthResponse;
 import com.leavemanagement.dto.ChangePasswordRequest;
 import com.leavemanagement.dto.EmployeeView;
+import com.leavemanagement.dto.EmployeeView.Access;
 import com.leavemanagement.dto.MeResponse;
 import com.leavemanagement.dto.UpdateProfileRequest;
 import com.leavemanagement.entity.UserAccount;
@@ -37,7 +38,7 @@ public class ProfileController {
         AppUserDetails me = currentUser.get();
         EmployeeView employee = me.getEmployeeId() == null ? null
                 : employeeService.getEmployeeById(me.getEmployeeId())
-                        .map(e -> employeeService.toView(e, true))
+                        .map(e -> employeeService.toView(e, Access.PERSONAL))
                         .orElse(null);
         return new MeResponse(me.getUserId(), me.getUsername(), me.getRole(), me.isMustChangePassword(), employee, me.isAdmin());
     }
@@ -48,7 +49,7 @@ public class ProfileController {
     @PutMapping
     public EmployeeView updateProfile(@Valid @RequestBody UpdateProfileRequest request) {
         Integer employeeId = currentUser.requireEmployeeId();
-        return employeeService.toView(employeeService.updateOwnPhone(employeeId, request.phone()), true);
+        return employeeService.toView(employeeService.updateOwnPhone(employeeId, request.phone()), Access.PERSONAL);
     }
 
     /**
