@@ -60,6 +60,7 @@ function loadAll() {
     if (document.getElementById('hrDashboard')) {
         updateExportLinks();
         loadSummary();
+        loadContractsEnding();
         loadNegativeBalances();
         loadBalanceSummary();
     }
@@ -123,6 +124,35 @@ async function loadSummary() {
         `${formatDays(s.totalRemaining)} remaining (all employees, not counting comp-off).`;
 }
 
+// Active employees whose contract ends within 30 days, or has already ended
+async function loadContractsEnding() {
+    const rows = await apiCall('/reports/contracts-ending?days=30');
+    const tbody = document.getElementById('contractsEndingList');
+    if (!rows) return;
+    if (rows.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">No contracts ending in the next 30 days</td></tr>';
+        return;
+    }
+    tbody.innerHTML = rows.map(r => `
+        <tr>
+            <td>${escapeHtml(r.employeeName)}</td>
+            <td>${escapeHtml(r.department)}</td>
+            <td>${escapeHtml(r.designation)}</td>
+            <td>${escapeHtml(r.leadName || '-')}</td>
+            <td>${formatDate(r.endDate)}</td>
+            <td>${contractWhen(r.daysLeft)}</td>
+        </tr>`).join('');
+}
+
+function contractWhen(daysLeft) {
+    if (daysLeft < 0) {
+        const ago = -daysLeft;
+        return `<span class="text-danger fw-bold">Ended ${ago} day${ago === 1 ? '' : 's'} ago</span>`;
+    }
+    if (daysLeft === 0) return '<span class="text-danger fw-bold">Ends today</span>';
+    return `In ${daysLeft} day${daysLeft === 1 ? '' : 's'}`;
+}
+
 async function loadNegativeBalances() {
     const rows = await apiCall(`/reports/negative-balances?year=${selectedYear()}`);
     const tbody = document.getElementById('negativeList');
@@ -167,7 +197,7 @@ function renderBalanceSummary() {
     document.getElementById('sortArrow').textContent =
         sortByRemaining === 'asc' ? '▲' : sortByRemaining === 'desc' ? '▼' : '';
     if (balanceRows.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="10" class="text-center text-muted">No balances for this year and filter</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted">No balances for this year and filter</td></tr>';
         return;
     }
     const rows = balanceRows.slice();
@@ -177,7 +207,6 @@ function renderBalanceSummary() {
     }
     tbody.innerHTML = rows.map(r => `
         <tr>
-            <td>${r.employeeId}</td>
             <td>${employeeLink(r.employeeId, r.employeeName)}${r.employeeStatus !== 'ACTIVE'
                 ? ` <span class="badge bg-secondary">${escapeHtml(r.employeeStatus.toLowerCase())}</span>` : ''}</td>
             <td>${escapeHtml(r.department)}</td>

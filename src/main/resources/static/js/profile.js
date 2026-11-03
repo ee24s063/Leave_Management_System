@@ -23,7 +23,6 @@ document.addEventListener('DOMContentLoaded', async function() {
 function showProfile(me) {
     const e = me.employee;
     const rows = [
-        ['Employee ID', e.employeeId],
         ['Name', e.fullName],
         ['Email (login)', e.email],
         ['Mobile number', e.phone || '-'],
@@ -32,6 +31,11 @@ function showProfile(me) {
         ['Reporting Lead', e.reportingLeadName || '-'],
         ['Role', me.role.replace('_', ' ')],
         ['Date of Joining', formatDate(e.dateOfJoining)],
+        ['End Date', e.endDate ? formatDate(e.endDate) : '-'],
+        ['Aadhaar number', e.aadhaarMasked || '-'],
+        ['PAN', e.panMasked || '-'],
+        ['Emergency contact', e.emergencyContactName
+            ? `${e.emergencyContactName} (${e.emergencyContactRelation}), ${e.emergencyContactPhone}` : '-'],
         ['Status', e.status]
     ];
     document.getElementById('profileDetails').innerHTML = rows.map(([label, value]) =>

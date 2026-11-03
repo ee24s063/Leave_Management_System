@@ -206,7 +206,8 @@ class LabHeadApprovalTests {
     private String newHrJson(Integer headId, Integer leadId) {
         return """
                 {"firstName":"Nia","lastName":"Test","email":"nia.new@test.com","department":"HR","designation":"HR Officer",
-                 "dateOfJoining":"2025-06-01","salary":50000,"role":"HR_ADMIN","headApproverId":%s,"reporting_LeadId":%s}
+                 "dateOfJoining":"2025-06-01","endDate":"2028-03-31","aadhaarNumber":"234567890001","panNumber":"ABCDB0001F",
+                 "emergencyContactName":"Ravi Test","emergencyContactRelation":"Father","emergencyContactPhone":"9000000001","salary":50000,"role":"HR_ADMIN","headApproverId":%s,"reporting_LeadId":%s}
                 """.formatted(headId, leadId);
     }
 

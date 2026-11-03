@@ -4,6 +4,7 @@ import com.leavemanagement.config.RoleNames;
 import com.leavemanagement.dto.CreateEmployeeRequest;
 import com.leavemanagement.dto.CreatedEmployeeResponse;
 import com.leavemanagement.dto.EmployeeView;
+import com.leavemanagement.dto.EmployeeView.Access;
 import com.leavemanagement.dto.UpdateEmployeeRequest;
 import com.leavemanagement.entity.Employee;
 import com.leavemanagement.entity.EmployeeStatus;
@@ -17,6 +18,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
@@ -43,12 +45,16 @@ public class EmployeeService {
     /**
      * Create an employee and their login account (username = email) with a temporary password, which is emailed
      * to them and never shown. If the email cannot be sent, nothing is saved. The employee starts with
-     * this month's monthly leave.
+     * this month's monthly leave. The contract end date, Aadhaar, PAN and emergency contact are required.
      */
     public CreatedEmployeeResponse createEmployee(CreateEmployeeRequest req) {
         String email = req.email().trim();
         checkEmailNotTaken(email);
         checkPhoneNotTaken(req.phone(), null, true);
+        String aadhaar = normalizeAadhaar(req.aadhaarNumber());
+        String pan = normalizePan(req.panNumber());
+        checkIdNotTaken(aadhaar, pan, null);
+        checkEndDate(req.dateOfJoining(), req.endDate());
         if (req.reporting_LeadId() != null) {
             validateReportingLead(req.reporting_LeadId(), null, req.role());
         }
@@ -71,6 +77,12 @@ public class EmployeeService {
         employee.setStatus(EmployeeStatus.ACTIVE);
         employee.setReporting_LeadId(req.reporting_LeadId());
         employee.setHeadApproverId(req.role() == Role.HR_ADMIN ? req.headApproverId() : null);
+        employee.setEndDate(req.endDate());
+        employee.setAadhaarNumber(aadhaar);
+        employee.setPanNumber(pan);
+        employee.setEmergencyContactName(requireText(req.emergencyContactName(), "Emergency contact name"));
+        employee.setEmergencyContactRelation(requireText(req.emergencyContactRelation(), "Emergency contact relation"));
+        employee.setEmergencyContactPhone(requireText(req.emergencyContactPhone(), "Emergency contact number"));
         employee = employeeRepository.save(employee);
 
         String temporaryPassword = PasswordGenerator.generate();
@@ -85,7 +97,7 @@ public class EmployeeService {
         leaveAccrualService.creditFirstMonth(employee.getEmployeeId());
         mailService.sendTemporaryPassword(email, employee.getFullName(), email, temporaryPassword, false);
 
-        return new CreatedEmployeeResponse(toView(employee, true), email, email);
+        return new CreatedEmployeeResponse(toView(employee, Access.PERSONAL), email, email);
     }
 
     /**
@@ -108,6 +120,29 @@ public class EmployeeService {
             employee.setPhone(blankToNull(req.phone()));
         }
         if (req.salary() != null) employee.setSalary(req.salary());
+        if (req.endDate() != null) {
+            checkEndDate(employee.getDateOfJoining(), req.endDate());
+            employee.setEndDate(req.endDate());
+        }
+        if (req.aadhaarNumber() != null) {
+            String aadhaar = normalizeAadhaar(req.aadhaarNumber());
+            checkIdNotTaken(aadhaar, null, employeeId);
+            employee.setAadhaarNumber(aadhaar);
+        }
+        if (req.panNumber() != null) {
+            String pan = normalizePan(req.panNumber());
+            checkIdNotTaken(null, pan, employeeId);
+            employee.setPanNumber(pan);
+        }
+        if (req.emergencyContactName() != null) {
+            employee.setEmergencyContactName(requireText(req.emergencyContactName(), "Emergency contact name"));
+        }
+        if (req.emergencyContactRelation() != null) {
+            employee.setEmergencyContactRelation(requireText(req.emergencyContactRelation(), "Emergency contact relation"));
+        }
+        if (req.emergencyContactPhone() != null) {
+            employee.setEmergencyContactPhone(requireText(req.emergencyContactPhone(), "Emergency contact number"));
+        }
 
         if (req.email() != null && !req.email().trim().equalsIgnoreCase(employee.getEmail())) {
             String email = req.email().trim();
@@ -276,14 +311,14 @@ public class EmployeeService {
         return employeeRepository.countByStatus(EmployeeStatus.ACTIVE);
     }
 
-    public EmployeeView toView(Employee employee, boolean includeSalary) {
-        return toViews(List.of(employee), includeSalary).get(0);
+    public EmployeeView toView(Employee employee, Access access) {
+        return toViews(List.of(employee), access).get(0);
     }
 
     /**
      * Add role, reporting lead and Lab Head names to employees, loading accounts and approvers in bulk
      */
-    public List<EmployeeView> toViews(List<Employee> employees, boolean includeSalary) {
+    public List<EmployeeView> toViews(List<Employee> employees, Access access) {
         List<Integer> ids = employees.stream().map(Employee::getEmployeeId).toList();
         Map<Integer, Role> roles = userAccountRepository.findByEmployeeIdIn(ids).stream()
                 .collect(Collectors.toMap(UserAccount::getEmployeeId, UserAccount::getRole));
@@ -294,7 +329,7 @@ public class EmployeeService {
                 .collect(Collectors.toMap(Employee::getEmployeeId, Function.identity()));
         return employees.stream()
                 .map(e -> EmployeeView.of(e, roles.get(e.getEmployeeId()),
-                        nameOf(approvers, e.getReporting_LeadId()), nameOf(approvers, e.getHeadApproverId()), includeSalary))
+                        nameOf(approvers, e.getReporting_LeadId()), nameOf(approvers, e.getHeadApproverId()), access))
                 .toList();
     }
 
@@ -389,8 +424,53 @@ public class EmployeeService {
         return digits.length() > 10 ? digits.substring(digits.length() - 10) : digits;
     }
 
+    /**
+     * Aadhaar: 12 digits, the first not 0 or 1; spaces and hyphens are allowed when typed and removed
+     */
+    static String normalizeAadhaar(String value) {
+        String digits = value == null ? "" : value.replaceAll("[\\s-]", "");
+        if (!digits.matches("[2-9][0-9]{11}")) {
+            throw new IllegalArgumentException("Aadhaar number must be 12 digits (e.g. 2345 6789 0123)");
+        }
+        return digits;
+    }
+
+    /**
+     * PAN: five letters, four digits, one letter (e.g. ABCDE1234F); stored in upper case
+     */
+    static String normalizePan(String value) {
+        String pan = value == null ? "" : value.replaceAll("\\s", "").toUpperCase();
+        if (!pan.matches("[A-Z]{5}[0-9]{4}[A-Z]")) {
+            throw new IllegalArgumentException("PAN must be 5 letters, 4 digits and 1 letter (e.g. ABCDE1234F)");
+        }
+        return pan;
+    }
+
+    /**
+     * No two employees (active or not) may share an Aadhaar or PAN number
+     */
+    private void checkIdNotTaken(String aadhaar, String pan, Integer employeeId) {
+        Optional<Employee> sameAadhaar = aadhaar == null ? Optional.empty() : employeeRepository.findFirstByAadhaarNumber(aadhaar);
+        if (sameAadhaar.isPresent() && !sameAadhaar.get().getEmployeeId().equals(employeeId)) {
+            throw new IllegalStateException("An employee with this Aadhaar number already exists: " + describe(sameAadhaar.get())
+                    + ". Check the details, or edit the existing record instead.");
+        }
+        Optional<Employee> samePan = pan == null ? Optional.empty() : employeeRepository.findFirstByPanNumber(pan);
+        if (samePan.isPresent() && !samePan.get().getEmployeeId().equals(employeeId)) {
+            throw new IllegalStateException("An employee with this PAN already exists: " + describe(samePan.get())
+                    + ". Check the details, or edit the existing record instead.");
+        }
+    }
+
+    private static void checkEndDate(LocalDate joining, LocalDate end) {
+        if (joining != null && end != null && !end.isAfter(joining)) {
+            throw new IllegalArgumentException("End date must be after the date of joining");
+        }
+    }
+
+    // Name and email; the internal employee number is not shown to users
     private static String describe(Employee e) {
-        String who = e.getFullName() + " (#" + e.getEmployeeId() + ")";
+        String who = e.getFullName() + " (" + e.getEmail() + ")";
         return e.getStatus() == EmployeeStatus.ACTIVE ? who : who + ", " + e.getStatus().name().toLowerCase();
     }
 

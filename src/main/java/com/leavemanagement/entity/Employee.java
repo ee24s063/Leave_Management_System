@@ -55,6 +55,26 @@ public class Employee {
     @Column(name = "head_approver_id")
     private Integer headApproverId;
 
+    // Contract end date (required for new employees; older records may not have one yet)
+    private LocalDate endDate;
+
+    // ID proof: 12 digits, no spaces
+    @Column(length = 12)
+    private String aadhaarNumber;
+
+    // ID proof: e.g. ABCDE1234F, upper case
+    @Column(length = 10)
+    private String panNumber;
+
+    @Column(length = 100)
+    private String emergencyContactName;
+
+    @Column(length = 50)
+    private String emergencyContactRelation;
+
+    @Column(length = 20)
+    private String emergencyContactPhone;
+
     public String getFullName() {
         return firstName + " " + lastName;
     }

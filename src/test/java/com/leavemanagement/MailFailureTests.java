@@ -49,7 +49,8 @@ class MailFailureTests {
         mockMvc.perform(post("/api/employees").with(as(hrAccount)).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON).content("""
                                 {"firstName":"Nia","lastName":"New","email":"nia.mailfail@test.com","department":"IT",
-                                 "designation":"Dev","salary":1000,"dateOfJoining":"2026-01-05","role":"EMPLOYEE"}
+                                 "designation":"Dev","salary":1000,"dateOfJoining":"2026-01-05","endDate":"2028-03-31","aadhaarNumber":"234567890002","panNumber":"ABCDC0002F",
+                 "emergencyContactName":"Ravi Test","emergencyContactRelation":"Father","emergencyContactPhone":"9000000002","role":"EMPLOYEE"}
                                 """))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.message").value("Could not send the temporary password to nia.mailfail@test.com. "

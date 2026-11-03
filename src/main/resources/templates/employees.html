@@ -116,6 +116,48 @@
                                     </select>
                                 </div>
                             </div>
+
+                            <h6 class="border-bottom pb-1 mt-2">Contract and ID proof</h6>
+                            <div class="row">
+                                <div class="col-md-4 mb-3">
+                                    <label for="endDate" class="form-label">End Date</label>
+                                    <input type="date" class="form-control" id="endDate" required>
+                                </div>
+                                <div class="col-md-4 mb-3">
+                                    <label for="aadhaarNumber" class="form-label">Aadhaar number</label>
+                                    <input type="text" class="form-control" id="aadhaarNumber" required inputmode="numeric"
+                                           maxlength="14" pattern="[2-9][0-9]{3} ?[0-9]{4} ?[0-9]{4}"
+                                           title="12 digits, e.g. 2345 6789 0123" placeholder="e.g. 2345 6789 0123" autocomplete="off">
+                                </div>
+                                <div class="col-md-4 mb-3">
+                                    <label for="panNumber" class="form-label">PAN</label>
+                                    <input type="text" class="form-control text-uppercase" id="panNumber" required
+                                           maxlength="10" pattern="[A-Za-z]{5}[0-9]{4}[A-Za-z]"
+                                           title="5 letters, 4 digits, 1 letter, e.g. ABCDE1234F" placeholder="e.g. ABCDE1234F" autocomplete="off">
+                                </div>
+                            </div>
+
+                            <h6 class="border-bottom pb-1 mt-2">Emergency contact</h6>
+                            <div class="row">
+                                <div class="col-md-4 mb-3">
+                                    <label for="emergencyContactName" class="form-label">Name</label>
+                                    <input type="text" class="form-control" id="emergencyContactName" required maxlength="100">
+                                </div>
+                                <div class="col-md-4 mb-3">
+                                    <label for="emergencyContactRelation" class="form-label">Relation</label>
+                                    <input type="text" class="form-control" id="emergencyContactRelation" required maxlength="50"
+                                           list="relationOptions" placeholder="e.g. Father">
+                                    <datalist id="relationOptions">
+                                        <option value="Father"></option><option value="Mother"></option><option value="Spouse"></option>
+                                        <option value="Brother"></option><option value="Sister"></option><option value="Son"></option>
+                                        <option value="Daughter"></option><option value="Guardian"></option><option value="Friend"></option>
+                                    </datalist>
+                                </div>
+                                <div class="col-md-4 mb-3">
+                                    <label for="emergencyContactPhone" class="form-label">Contact number</label>
+                                    <input type="tel" class="form-control" id="emergencyContactPhone" required placeholder="e.g. +91 98765 43210">
+                                </div>
+                            </div>
                             <button type="submit" class="btn btn-success" id="submitBtn">Add Employee</button>
                         </form>
                     </div>
@@ -156,7 +198,6 @@
                             <table class="table table-striped table-hover" id="employeesTable">
                                 <thead class="table-dark">
                                     <tr>
-                                        <th>ID</th>
                                         <th>Name</th>
                                         <th>Email</th>
                                         <th>Mobile</th>
@@ -170,12 +211,29 @@
                                 </thead>
                                 <tbody id="employeesList">
                                     <tr>
-                                        <td colspan="10" class="text-center">Loading employees...</td>
+                                        <td colspan="9" class="text-center">Loading employees...</td>
                                     </tr>
                                 </tbody>
                             </table>
                         </div>
                     </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- An employee's full details (View button) -->
+    <div class="modal fade" id="viewEmployeeModal" tabindex="-1" aria-labelledby="viewEmployeeTitle" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="viewEmployeeTitle">Employee</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body" id="viewEmployeeBody"></div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-warning" id="viewEditBtn">Edit</button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
                 </div>
             </div>
         </div>

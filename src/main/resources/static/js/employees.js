@@ -76,14 +76,13 @@ function displayEmployees(employees) {
     if (employees.length === 0) {
         const message = document.getElementById('includeInactive').checked ? 'No employees found.'
             : 'No active employees found. Tick "Include inactive" to also see inactive, resigned and relieved employees.';
-        tbody.innerHTML = `<tr><td colspan="10" class="text-center">${message}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="9" class="text-center">${message}</td></tr>`;
         return;
     }
 
     employees.forEach(emp => {
         const row = document.createElement('tr');
         row.innerHTML = `
-            <td>${emp.employeeId}</td>
             <td>${escapeHtml(emp.fullName)}</td>
             <td>${escapeHtml(emp.email)}</td>
             <td>${escapeHtml(emp.phone || '-')}</td>
@@ -93,6 +92,7 @@ function displayEmployees(employees) {
             <td>${approversCell(emp)}</td>
             <td><span class="badge bg-${STATUS_COLORS[emp.status] || 'info'}">${escapeHtml(emp.status)}</span></td>
             <td class="text-nowrap">
+                <button class="btn btn-sm btn-primary" onclick="viewEmployee(${emp.employeeId})">View</button>
                 <button class="btn btn-sm btn-warning" onclick="editEmployee(${emp.employeeId})">Edit</button>
                 <button class="btn btn-sm btn-info" onclick="resetPassword(${emp.employeeId})">Reset password</button>
                 ${emp.status === 'ACTIVE'
@@ -115,7 +115,13 @@ function formValues() {
         designation: document.getElementById('designation').value,
         salary: parseFloat(document.getElementById('salary').value),
         dateOfJoining: document.getElementById('dateOfJoining').value,
-        role: document.getElementById('role').value
+        role: document.getElementById('role').value,
+        endDate: document.getElementById('endDate').value,
+        aadhaarNumber: document.getElementById('aadhaarNumber').value,
+        panNumber: document.getElementById('panNumber').value,
+        emergencyContactName: document.getElementById('emergencyContactName').value,
+        emergencyContactRelation: document.getElementById('emergencyContactRelation').value,
+        emergencyContactPhone: document.getElementById('emergencyContactPhone').value
     };
 }
 
@@ -186,9 +192,59 @@ async function sendTestEmail() {
     if (result) showSentNotice(result.message);
 }
 
-// Fill the form with an employee's details for editing
-function editEmployee(employeeId) {
-    const emp = employeesById[employeeId];
+// Show all of an employee's details (HR gets the full Aadhaar and PAN)
+async function viewEmployee(employeeId) {
+    const emp = await apiCall(`/employees/${employeeId}`);
+    if (!emp) return;
+    const notGiven = '<span class="text-muted">Not given yet</span>';
+    const value = v => (v === null || v === undefined || v === '') ? notGiven : escapeHtml(v);
+    const date = d => d ? escapeHtml(formatDate(d)) : notGiven;
+    const approvers = emp.role === 'HR_ADMIN'
+        ? `${escapeHtml(ROLE_NAMES.LAB_HEAD)}: ${value(emp.headApproverName)}`
+          + (emp.reportingLeadName ? `<br>Team Lead: ${escapeHtml(emp.reportingLeadName)}` : '')
+        : value(emp.reportingLeadName);
+    const emergency = emp.emergencyContactName
+        ? `${escapeHtml(emp.emergencyContactName)}${emp.emergencyContactRelation ? ` (${escapeHtml(emp.emergencyContactRelation)})` : ''}<br>${value(emp.emergencyContactPhone)}`
+        : notGiven;
+    const sections = [
+        ['Work', [
+            ['Email', value(emp.email)],
+            ['Mobile number', value(emp.phone)],
+            ['Department', value(emp.department)],
+            ['Designation', value(emp.designation)],
+            ['Role', value(ROLE_LABELS[emp.role])],
+            ['Reporting lead / approvers', approvers],
+            ['Status', `<span class="badge bg-${STATUS_COLORS[emp.status] || 'info'}">${escapeHtml(emp.status)}</span>`],
+            ['Salary', value(emp.salary)]
+        ]],
+        ['Contract and ID proof', [
+            ['Date of joining', date(emp.dateOfJoining)],
+            ['End date', date(emp.endDate)],
+            ['Aadhaar number', emp.aadhaarNumber ? escapeHtml(emp.aadhaarNumber.replace(/(\d{4})(?=\d)/g, '$1 ')) : notGiven],
+            ['PAN', value(emp.panNumber)]
+        ]],
+        ['Emergency contact', [
+            ['Contact', emergency]
+        ]]
+    ];
+    document.getElementById('viewEmployeeTitle').textContent = emp.fullName;
+    document.getElementById('viewEmployeeBody').innerHTML = sections.map(([title, rows]) => `
+        <h6 class="text-secondary mt-2">${title}</h6>
+        <table class="table table-sm mb-3">
+            ${rows.map(([label, html]) => `<tr><th class="fw-normal text-muted" style="width: 40%">${label}</th><td>${html}</td></tr>`).join('')}
+        </table>`).join('');
+    document.getElementById('viewEditBtn').onclick = () => {
+        bootstrap.Modal.getInstance(document.getElementById('viewEmployeeModal')).hide();
+        editEmployee(employeeId);
+    };
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('viewEmployeeModal')).show();
+}
+
+// Fill the form with an employee's details for editing.
+// The list has Aadhaar and PAN masked, so the full record is loaded for the form.
+async function editEmployee(employeeId) {
+    if (!employeesById[employeeId]) return;
+    const emp = await apiCall(`/employees/${employeeId}`);
     if (!emp) return;
     document.getElementById('editEmployeeId').value = emp.employeeId;
     document.getElementById('firstName').value = emp.firstName;
@@ -200,11 +256,17 @@ function editEmployee(employeeId) {
     document.getElementById('salary').value = emp.salary;
     document.getElementById('dateOfJoining').value = emp.dateOfJoining;
     document.getElementById('dateOfJoining').disabled = true;
+    document.getElementById('endDate').value = emp.endDate || '';
+    document.getElementById('aadhaarNumber').value = emp.aadhaarNumber || '';
+    document.getElementById('panNumber').value = emp.panNumber || '';
+    document.getElementById('emergencyContactName').value = emp.emergencyContactName || '';
+    document.getElementById('emergencyContactRelation').value = emp.emergencyContactRelation || '';
+    document.getElementById('emergencyContactPhone').value = emp.emergencyContactPhone || '';
     document.getElementById('role').value = emp.role || 'EMPLOYEE';
     document.getElementById('headApprover').value = '';
     document.getElementById('status').value = emp.status;
     document.getElementById('statusGroup').hidden = false;
-    document.getElementById('formTitle').textContent = `Edit Employee #${emp.employeeId}`;
+    document.getElementById('formTitle').textContent = `Edit Employee: ${emp.fullName}`;
     document.getElementById('submitBtn').textContent = 'Save Changes';
     document.getElementById('cancelEditBtn').hidden = false;
     document.getElementById('reportingLead').value = '';
@@ -284,7 +346,7 @@ async function activateEmployee(employeeId) {
 async function deleteEmployeePermanently(employeeId) {
     const emp = employeesById[employeeId];
     if (!emp) return;
-    const typed = prompt(`DELETE PERMANENTLY: ${emp.fullName} (#${emp.employeeId})\n\n`
+    const typed = prompt(`DELETE PERMANENTLY: ${emp.fullName} (${emp.email})\n\n`
         + 'This removes the employee, their login, all their leave and comp-off requests, balances and balance history, '
         + 'and every approval they gave. It cannot be undone. (To keep their records, use Deactivate instead.)\n\n'
         + `Type the full name "${emp.fullName}" to confirm:`);

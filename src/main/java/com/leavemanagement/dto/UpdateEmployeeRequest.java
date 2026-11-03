@@ -5,6 +5,7 @@ import com.leavemanagement.entity.Role;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Positive;
+import java.time.LocalDate;
 
 /**
  * HR update of an employee; null fields are left unchanged.
@@ -23,5 +24,11 @@ public record UpdateEmployeeRequest(
         Integer reporting_LeadId,
         Boolean clearReportingLead,
         Role role,
-        Integer headApproverId) {
+        Integer headApproverId,
+        LocalDate endDate,
+        String aadhaarNumber,
+        String panNumber,
+        String emergencyContactName,
+        String emergencyContactRelation,
+        @Pattern(regexp = "^$|^\\+?[0-9 -]{7,20}$", message = "must be a valid phone number") String emergencyContactPhone) {
 }
