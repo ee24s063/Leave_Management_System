@@ -173,6 +173,42 @@
                     </excludes>
                 </configuration>
             </plugin>
+            <!-- Container image without Docker: mvn jib:buildTar (see README, "Docker image") -->
+            <plugin>
+                <groupId>com.google.cloud.tools</groupId>
+                <artifactId>jib-maven-plugin</artifactId>
+                <version>3.4.4</version>
+                <dependencies>
+                    <!-- Leaves spring-boot-devtools out of the image -->
+                    <dependency>
+                        <groupId>com.google.cloud.tools</groupId>
+                        <artifactId>jib-spring-boot-extension-maven</artifactId>
+                        <version>0.1.0</version>
+                    </dependency>
+                </dependencies>
+                <configuration>
+                    <pluginExtensions>
+                        <pluginExtension>
+                            <implementation>com.google.cloud.tools.jib.maven.extension.springboot.JibSpringBootExtension</implementation>
+                        </pluginExtension>
+                    </pluginExtensions>
+                    <from>
+                        <image>eclipse-temurin:21-jre</image>
+                    </from>
+                    <to>
+                        <image>leave-management-system</image>
+                    </to>
+                    <container>
+                        <workingDirectory>/app</workingDirectory>
+                        <ports>
+                            <port>8080</port>
+                        </ports>
+                        <environment>
+                            <LMS_LOGIN_URL>http://localhost:8080/lms/login</LMS_LOGIN_URL>
+                        </environment>
+                    </container>
+                </configuration>
+            </plugin>
         </plugins>
     </build>
 </project>
