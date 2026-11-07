@@ -182,6 +182,32 @@ The admin account is not an employee, so it cannot apply for leave. Create a sep
 - Upgrading is automatic. For example, a Phase 1 database gets migration V2 at the next start: pending requests become "Waiting for Team Lead", and earlier approve/reject decisions are moved into the approval history. V3 adds the built-in Compensatory Leave type and writes opening ledger entries for existing balances (allotted days and days already used). V4 adds the token version used to cancel login tokens. V5 adds the Lab Head approver (`head_approver_id`) to employees and moves HR staff's pending requests to "Waiting for Lab Head / Team Lead"; HR then sets a Lab Head on each HR employee so those requests reach an approver. V6 adds the built-in Monthly Leave type and folds each employee's old per-type yearly balances (and their ledger entries) into one monthly balance. V7 adds the end date, Aadhaar, PAN and emergency contact columns to employees (empty for existing employees until HR fills them in).
 - A `leavemanagement.db` left over from versions before Flyway will not start. Move or delete it, and a new one is created.
 
+### Docker image
+The image is built with **Jib**, so Docker is not needed to build it, only to run it:
+```bash
+mvn -DskipTests package jib:buildTar -Djib.to.image=leave-management-system:<commit-sha>
+# -> target/jib-image.tar (about 200 MB, linux/amd64, Java 21)
+```
+Run it on any computer with Docker:
+```bash
+docker load -i jib-image.tar
+docker run --name lms -p 8080:8080 -e LMS_DEMO_DATA=true leave-management-system:<commit-sha>
+# open http://localhost:8080/lms/login
+```
+- The image holds no passwords, keys or data. The database is created inside the container on first start (`/app/leavemanagement.db`) and is kept while the container exists (`docker stop lms` / `docker start lms`).
+- **Demo mode** (`LMS_DEMO_DATA=true`), for trying the app: on an empty database it adds a made-up team, all with the password `Demo@1234` (change it with `-e LMS_DEMO_PASSWORD=...`):
+
+  | Login | Role |
+  | --- | --- |
+  | `hr@demo.lms` | HR |
+  | `lead@demo.lms` | Team Lead of Arun and Meena |
+  | `labhead@demo.lms` | Lab Head (approves HR's leave) |
+  | `employee@demo.lms` | Employee (Arun) |
+  | `meena@demo.lms` | Employee whose contract ends in 20 days (HR Dashboard reminder) |
+
+  Never use demo mode with real data. Without it, the container starts with only the admin account; its temporary password is printed in `docker logs lms`.
+- Adding employees and resetting passwords send email, so they need the mail settings: add `-e LMS_MAIL_USERNAME=... -e LMS_MAIL_PASSWORD=...` to `docker run`. Never build them into the image.
+
 ## REST API
 
 All endpoints are under `/lms/api` and need a login token, either the browser's `LMS_TOKEN` cookie or an `Authorization: Bearer <token>` header. With the cookie, POST, PUT and DELETE also need the CSRF token: pages read it from the `_csrf` meta tag and send it in the header named by the `_csrf_header` meta tag (`X-XSRF-TOKEN`). Bearer requests need no CSRF token. Errors are returned as JSON: `{"status": 400, "error": "...", "message": "..."}`.
@@ -311,7 +337,7 @@ src/test/java/     Spring Boot + MockMvc tests: access rules, approval workflow,
 
 ## Testing
 ```bash
-mvn test                          # all 303 tests, about a minute
+mvn test                          # all 305 tests, about a minute
 mvn test -DexcludedGroups=ui      # without the browser tests
 mvn test -Dtest=UiTests           # only the browser tests
 ```
@@ -320,12 +346,12 @@ Three levels:
 | Level | Where | Tests |
 | --- | --- | --- |
 | Unit: one module at a time, no database (JUnit 5, Mockito) | `src/test/java/com/leavemanagement/{util,entity,security,service}` | 165 |
-| Integration: whole app through the REST API with a real database | `src/test/java/com/leavemanagement/*Tests.java` | 125 |
+| Integration: whole app through the REST API with a real database | `src/test/java/com/leavemanagement/*Tests.java` | 127 |
 | UI: a real headless browser clicking through the pages as each role (Selenium) | `src/test/java/com/leavemanagement/ui/UiTests.java` | 13 |
 
 The UI tests use Microsoft Edge, or Google Chrome when Edge's driver cannot be downloaded; with neither available they are skipped. They save a screenshot per scenario to `target/ui-screenshots`.
 
-Integration tests use a temporary SQLite file under `target/` and a fake mail sender (`RecordingMailSender`, so no real email is sent) and cover login (form and API, token cookie, Bearer tokens, altered tokens, logout and password changes cancelling tokens), CSRF, the forced password change, each access rule (own data, own team, HR-only actions), the two-level approval workflow (routing, HR approving for an absent lead, rejections, cancelling, queues, history), Lab Head approval of HR staff (either approver is final, other HR users refused, creating HR staff, the renamed role), employee details (required, Aadhaar/PAN format and duplicates, masking by viewer, contracts ending soon), half-day leave, monthly leave (carry-over, each month once, inactive employees skipped, inactive months skipped on reactivation), negative balances, comp-off, HR adjustments, the ledger adding up to the balance, the dashboard reports (totals, filters, comp-off vs adjustments, negative-balance dates, Team Lead scope), the Excel exports (each file is opened and its rows checked; HR only; download with the login cookie), and that every page renders for each role.
+Integration tests use a temporary SQLite file under `target/` and a fake mail sender (`RecordingMailSender`, so no real email is sent) and cover login (form and API, token cookie, Bearer tokens, altered tokens, logout and password changes cancelling tokens), CSRF, the forced password change, each access rule (own data, own team, HR-only actions), the two-level approval workflow (routing, HR approving for an absent lead, rejections, cancelling, queues, history), Lab Head approval of HR staff (either approver is final, other HR users refused, creating HR staff, the renamed role), employee details (required, Aadhaar/PAN format and duplicates, masking by viewer, contracts ending soon), half-day leave, monthly leave (carry-over, each month once, inactive employees skipped, inactive months skipped on reactivation), negative balances, comp-off, HR adjustments, the ledger adding up to the balance, the dashboard reports (totals, filters, comp-off vs adjustments, negative-balance dates, Team Lead scope), the Excel exports (each file is opened and its rows checked; HR only; download with the login cookie), that every page renders for each role, and demo mode (every role can log in, data added only once).
 
 ## Known limitations
 - An approved comp-off credit cannot be cancelled directly; HR corrects it with a negative balance adjustment.
